@@ -26,6 +26,15 @@ function ScrollLock() {
   return null;
 }
 
+function PageShell({ children }) {
+  const { pathname } = useLocation();
+  return (
+    <div key={pathname} className="page-enter">
+      {children}
+    </div>
+  );
+}
+
 export default function App() {
   const { pathname } = useLocation();
   const hideVideo =
@@ -39,16 +48,18 @@ export default function App() {
       <AnnouncementBar />
       <Navbar />
       <CartToast />
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/shop" element={<Shop />} />
-        <Route path="/collections/:slug" element={<Collection />} />
-        <Route path="/shop/:id" element={<ProductDetail />} />
-        <Route path="/cart" element={<Cart />} />
-        <Route path="/checkout" element={<Checkout />} />
-        <Route path="/order/:id" element={<OrderSuccess />} />
-        <Route path="/policies/:slug" element={<Policy />} />
-      </Routes>
+      <PageShell>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/shop" element={<Shop />} />
+          <Route path="/collections/:slug" element={<Collection />} />
+          <Route path="/shop/:id" element={<ProductDetail />} />
+          <Route path="/cart" element={<Cart />} />
+          <Route path="/checkout" element={<Checkout />} />
+          <Route path="/order/:id" element={<OrderSuccess />} />
+          <Route path="/policies/:slug" element={<Policy />} />
+        </Routes>
+      </PageShell>
       <Footer />
       {!hideVideo && <WatchBuyVideo />}
     </>

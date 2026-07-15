@@ -15,10 +15,12 @@ export default function ProductDetail() {
   const [qty, setQty] = useState(1);
   const [error, setError] = useState('');
   const [descOpen, setDescOpen] = useState(false);
+  const [addedPulse, setAddedPulse] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setDescOpen(false);
+    setProduct(null);
     api
       .getProduct(id)
       .then((data) => {
@@ -45,8 +47,17 @@ export default function ProductDetail() {
 
   if (!product) {
     return (
-      <main className="container pdp">
-        <p>Loading…</p>
+      <main className="pdp">
+        <div className="container pdp__grid">
+          <div className="skeleton skeleton--gallery" />
+          <div className="skeleton-stack">
+            <div className="skeleton skeleton--line" />
+            <div className="skeleton skeleton--title" />
+            <div className="skeleton skeleton--line" />
+            <div className="skeleton skeleton--line short" />
+            <div className="skeleton skeleton--btn" />
+          </div>
+        </div>
       </main>
     );
   }
@@ -65,7 +76,11 @@ export default function ProductDetail() {
     qty,
   };
 
-  const addToCart = () => addItem(cartPayload);
+  const addToCart = () => {
+    addItem(cartPayload);
+    setAddedPulse(true);
+    window.setTimeout(() => setAddedPulse(false), 900);
+  };
 
   const buyNow = () => {
     addItem(cartPayload);
@@ -161,9 +176,13 @@ export default function ProductDetail() {
             />
           </div>
 
-          <div className="pdp__actions">
-            <button type="button" className="btn btn--primary btn--full" onClick={addToCart}>
-              Add to cart — {formatINR(size.price * qty)}
+          <div className="pdp__actions pdp__actions--desktop">
+            <button
+              type="button"
+              className={`btn btn--primary btn--full${addedPulse ? ' is-pulse' : ''}`}
+              onClick={addToCart}
+            >
+              {addedPulse ? 'Added ✓' : `Add to cart — ${formatINR(size.price * qty)}`}
             </button>
             <button type="button" className="btn btn--buy-now btn--full" onClick={buyNow}>
               Buy now
@@ -181,6 +200,19 @@ export default function ProductDetail() {
             ))}
           </ul>
         </div>
+      </div>
+
+      <div className="pdp-sticky" aria-label="Quick buy">
+        <div className="pdp-sticky__price">
+          <strong>{formatINR(size.price * qty)}</strong>
+          <span>{size.label}</span>
+        </div>
+        <button type="button" className="btn btn--primary" onClick={addToCart}>
+          {addedPulse ? 'Added ✓' : 'Add to cart'}
+        </button>
+        <button type="button" className="btn btn--buy-now" onClick={buyNow}>
+          Buy
+        </button>
       </div>
     </main>
   );

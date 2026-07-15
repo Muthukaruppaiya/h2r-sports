@@ -1,24 +1,52 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export default function ProductGallery({ images = [], alt = 'Product', badge }) {
   const list = images.length ? images : ['/products/placeholders/front.svg'];
   const [active, setActive] = useState(0);
+  const [fading, setFading] = useState(false);
+  const touchX = useRef(null);
 
   useEffect(() => {
     setActive(0);
   }, [list.join('|')]);
 
-  const current = list[Math.min(active, list.length - 1)];
+  const goTo = (next) => {
+    if (next === active || list.length < 2) return;
+    setFading(true);
+    window.setTimeout(() => {
+      setActive(((next % list.length) + list.length) % list.length);
+      setFading(false);
+    }, 140);
+  };
 
-  const prev = () => setActive((i) => (i - 1 + list.length) % list.length);
-  const next = () => setActive((i) => (i + 1) % list.length);
+  const prev = () => goTo(active - 1);
+  const next = () => goTo(active + 1);
+
+  const current = list[Math.min(active, list.length - 1)];
 
   return (
     <div className="gallery">
-      <div className="gallery__main">
+      <div
+        className="gallery__main"
+        onTouchStart={(e) => {
+          touchX.current = e.changedTouches[0].clientX;
+        }}
+        onTouchEnd={(e) => {
+          if (touchX.current == null) return;
+          const dx = e.changedTouches[0].clientX - touchX.current;
+          touchX.current = null;
+          if (Math.abs(dx) < 40) return;
+          if (dx < 0) next();
+          else prev();
+        }}
+      >
         {badge && <span className="pdp__badge">{badge}</span>}
 
-        <img src={current} alt={`${alt} — image ${active + 1}`} className="gallery__image" />
+        <img
+          src={current}
+          alt={`${alt} — image ${active + 1}`}
+          className={`gallery__image${fading ? ' is-fading' : ''}`}
+        />
 
         {list.length > 1 && (
           <>
@@ -53,7 +81,7 @@ export default function ProductGallery({ images = [], alt = 'Product', badge }) 
               type="button"
               role="listitem"
               className={`gallery__thumb${i === active ? ' gallery__thumb--active' : ''}`}
-              onClick={() => setActive(i)}
+              onClick={() => goTo(i)}
               aria-label={`View image ${i + 1}`}
             >
               <img src={src} alt="" />
