@@ -8,13 +8,34 @@ const VIEW_FILES = [
   '05-handle.svg',
 ];
 
+/** Real lifestyle photos for cards (hover swap uses first two) */
+const PHOTO_POOL = [
+  '/products/photos/bat-1.jpg',
+  '/products/photos/bat-2.jpg',
+  '/products/photos/bat-3.jpg',
+  '/products/photos/bat-4.jpg',
+  '/products/photos/bat-5.jpg',
+  '/products/photos/bat-6.jpg',
+];
+
+function hashId(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i += 1) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return h;
+}
+
 function imagesFor(id) {
-  return VIEW_FILES.map((file) => `/products/${id}/${file}`);
+  const i = hashId(id) % PHOTO_POOL.length;
+  const photoA = PHOTO_POOL[i];
+  const photoB = PHOTO_POOL[(i + 1) % PHOTO_POOL.length];
+  // Keep gallery lean on mobile — 2 photos + 3 detail views
+  const detailViews = VIEW_FILES.slice(0, 3).map((file) => `/products/${id}/${file}`);
+  return [photoA, photoB, ...detailViews];
 }
 
 function withImages(product) {
   const images = product.images?.length ? product.images : imagesFor(product.id);
-  return { ...product, images, image: images[0] };
+  return { ...product, images, image: images[0], hoverImage: images[1] || images[0] };
 }
 
 export const COLLECTIONS = [
@@ -63,10 +84,10 @@ const RAW_PRODUCTS = [
     description:
       'Hard tennis power bat with aggressive profile — bestseller balance for gully and club tennis-ball cricket.',
     features: [
-      'All India free shipping',
-      'COD available',
+      'Free engraving on prepaid*',
       '6 months bat warranty',
-      'Free cover on prepaid*',
+      'COD available',
+      'Pan-India delivery',
     ],
     inStock: true,
   },
@@ -333,18 +354,78 @@ const RAW_PRODUCTS = [
 export const PRODUCTS = RAW_PRODUCTS.map(withImages);
 
 export const REVIEWS = [
-  { id: 1, name: 'Balvant Jogi', text: 'Bat is so good and perfect balancing. Thank you!' },
-  { id: 2, name: 'Jayesh Nawab', text: 'Best quality and perfect delivery time. Thank you so much bhai.' },
-  { id: 3, name: 'Meetrajsinh Jadeja', text: 'Superb bat quality & super service by H2R Sports. Thank you!' },
-  { id: 4, name: 'Akshit Shetty', text: 'Amazing bats… balance and weight distribution are excellent.' },
-  { id: 5, name: 'Ashutosh Jha', text: 'Ordered from Delhi NCR. Huge difference vs local market bats.' },
-  { id: 6, name: 'Sandeep Sandy', text: 'Great punch and good finishing — value for money.' },
-  { id: 7, name: 'Priyanshu Barik', text: 'Craftsmanship stands out — perfect balance and premium finish.' },
-  { id: 8, name: 'Anu', text: 'Excellent customer service and a very trustable brand.' },
-  { id: 9, name: 'Ganesh Borkar', text: 'Smashed 5 sixes with it today. Absolutely loved it!' },
-  { id: 10, name: 'Vasu Naik', text: 'Super quality bat and packaging. Will order again.' },
-  { id: 11, name: 'Syed Khaled', text: 'Awesome bat, super quality and service. Love H2R Sports.' },
-  { id: 12, name: 'Karan More', text: 'Rhino style punch is excellent. Highly recommended.' },
+  {
+    id: 1,
+    name: 'Balvant Jogi',
+    text: 'Bat is so good and perfect balancing. Thank you!',
+    image: '/products/photos/bat-1.jpg',
+  },
+  {
+    id: 2,
+    name: 'Jayesh Nawab',
+    text: 'Best quality and perfect delivery time. Thank you so much bhai.',
+    image: '/products/photos/bat-2.jpg',
+  },
+  {
+    id: 3,
+    name: 'Meetrajsinh Jadeja',
+    text: 'Superb bat quality & super service by H2R Sports. Thank you!',
+    image: '/products/photos/bat-3.jpg',
+  },
+  {
+    id: 4,
+    name: 'Akshit Shetty',
+    text: 'Amazing bats… balance and weight distribution are excellent.',
+    image: '/products/photos/bat-4.jpg',
+  },
+  {
+    id: 5,
+    name: 'Ashutosh Jha',
+    text: 'Ordered from Delhi NCR. Huge difference vs local market bats.',
+    image: '/products/photos/bat-5.jpg',
+  },
+  {
+    id: 6,
+    name: 'Sandeep Sandy',
+    text: 'Great punch and good finishing — value for money.',
+    image: '/products/photos/bat-6.jpg',
+  },
+  {
+    id: 7,
+    name: 'Priyanshu Barik',
+    text: 'Craftsmanship stands out — perfect balance and premium finish.',
+    image: '/products/photos/bat-1.jpg',
+  },
+  {
+    id: 8,
+    name: 'Anu',
+    text: 'Excellent customer service and a very trustable brand.',
+    image: '/products/photos/bat-2.jpg',
+  },
+  {
+    id: 9,
+    name: 'Ganesh Borkar',
+    text: 'Smashed 5 sixes with it today. Absolutely loved it!',
+    image: '/products/photos/bat-3.jpg',
+  },
+  {
+    id: 10,
+    name: 'Vasu Naik',
+    text: 'Super quality bat and packaging. Will order again.',
+    image: '/products/photos/bat-4.jpg',
+  },
+  {
+    id: 11,
+    name: 'Syed Khaled',
+    text: 'Awesome bat, super quality and service. Love H2R Sports.',
+    image: '/products/photos/bat-5.jpg',
+  },
+  {
+    id: 12,
+    name: 'Karan More',
+    text: 'Rhino style punch is excellent. Highly recommended.',
+    image: '/products/photos/bat-6.jpg',
+  },
 ];
 
 export const STORE_INFO = {

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import AnnouncementBar from './components/AnnouncementBar';
 import Navbar from './components/Navbar';
@@ -11,6 +12,19 @@ import ProductDetail from './pages/ProductDetail';
 import Cart from './pages/Cart';
 import Checkout from './pages/Checkout';
 import OrderSuccess from './pages/OrderSuccess';
+import Policy from './pages/Policy';
+
+function ScrollLock() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollLeft = 0;
+    document.body.scrollLeft = 0;
+  }, [pathname]);
+
+  return null;
+}
 
 export default function App() {
   const { pathname } = useLocation();
@@ -21,6 +35,7 @@ export default function App() {
 
   return (
     <>
+      <ScrollLock />
       <AnnouncementBar />
       <Navbar />
       <CartToast />
@@ -32,6 +47,7 @@ export default function App() {
         <Route path="/cart" element={<Cart />} />
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/order/:id" element={<OrderSuccess />} />
+        <Route path="/policies/:slug" element={<Policy />} />
       </Routes>
       <Footer />
       {!hideVideo && <WatchBuyVideo />}

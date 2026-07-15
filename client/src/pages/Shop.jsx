@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
 import { api } from '../api/store';
 
@@ -12,11 +12,17 @@ const SORTS = [
 ];
 
 export default function Shop() {
+  const [searchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState('All');
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(() => searchParams.get('q') || '');
   const [sort, setSort] = useState('featured');
+
+  useEffect(() => {
+    const q = searchParams.get('q') || '';
+    setQuery(q);
+  }, [searchParams]);
 
   useEffect(() => {
     let cancelled = false;

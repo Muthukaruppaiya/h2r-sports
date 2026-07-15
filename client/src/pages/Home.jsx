@@ -4,6 +4,7 @@ import CollectionGrid from '../components/CollectionGrid';
 import ProductRail from '../components/ProductRail';
 import TrustStrip from '../components/TrustStrip';
 import Reviews from '../components/Reviews';
+import AnnouncementBar from '../components/AnnouncementBar';
 import { api } from '../api/store';
 
 export default function Home() {
@@ -51,6 +52,15 @@ export default function Home() {
   return (
     <main className="home-shop">
       <section className="home-banner">
+        <div className="home-banner__media" aria-hidden="true">
+          <img
+            src="/hero/banner.jpg"
+            alt=""
+            className="home-banner__photo"
+            fetchPriority="high"
+          />
+          <div className="home-banner__scrim" />
+        </div>
         <div className="container home-banner__inner">
           <p className="home-banner__eyebrow">Tamil Nadu cricket bats · @h2r_sports_</p>
           <h1>H2R Sports — bats built for Indian cricket.</h1>
@@ -71,6 +81,7 @@ export default function Home() {
 
       <CollectionGrid collections={collections} />
       <ProductRail title="Top Selling" products={topSelling} loading={loading} />
+      <AnnouncementBar variant="inline" />
       <TrustStrip benefits={benefits} />
       <ProductRail title="Most Loved Tennis Bats" products={lovedTennis} loading={loading} />
       <ProductRail title="Most Loved Season Bats" products={lovedSeason} loading={loading} />

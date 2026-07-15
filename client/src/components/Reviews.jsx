@@ -1,22 +1,86 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 
 function ReviewCard({ review }) {
   return (
     <blockquote className="review-card review-card--marquee">
-      <div className="review-card__stars" aria-hidden="true">
-        ★★★★★
+      {review.image ? (
+        <div className="review-card__photo">
+          <img src={review.image} alt="" loading="lazy" />
+        </div>
+      ) : null}
+      <div className="review-card__body">
+        <div className="review-card__stars" aria-hidden="true">
+          ★★★★★
+        </div>
+        <p>“{review.text}”</p>
+        <cite>{review.name}</cite>
       </div>
-      <p>“{review.text}”</p>
-      <cite>{review.name}</cite>
     </blockquote>
   );
 }
 
 function MarqueeRow({ reviews, direction }) {
-  const loop = useMemo(() => [...reviews, ...reviews], [reviews]);
+  const scrollerRef = useRef(null);
+  const rafRef = useRef(0);
+  const pausedRef = useRef(false);
+  const resumeTimer = useRef(0);
+  const loop = useMemo(() => [...reviews, ...reviews, ...reviews], [reviews]);
+
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return undefined;
+
+    const speed = direction === 'rtl' ? 0.55 : -0.55;
+
+    const tick = () => {
+      if (!pausedRef.current && el) {
+        el.scrollLeft += speed;
+        const third = el.scrollWidth / 3;
+        if (el.scrollLeft <= 0) el.scrollLeft = third;
+        if (el.scrollLeft >= third * 2) el.scrollLeft = third;
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    requestAnimationFrame(() => {
+      if (el) el.scrollLeft = el.scrollWidth / 3;
+    });
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      clearTimeout(resumeTimer.current);
+    };
+  }, [direction, reviews]);
+
+  const pause = () => {
+    pausedRef.current = true;
+    clearTimeout(resumeTimer.current);
+  };
+
+  const scheduleResume = () => {
+    clearTimeout(resumeTimer.current);
+    resumeTimer.current = window.setTimeout(() => {
+      pausedRef.current = false;
+    }, 1800);
+  };
 
   return (
-    <div className={`reviews-marquee reviews-marquee--${direction}`} aria-hidden={false}>
+    <div
+      className={`reviews-marquee reviews-marquee--${direction}`}
+      ref={scrollerRef}
+      onPointerDown={pause}
+      onPointerUp={scheduleResume}
+      onPointerCancel={scheduleResume}
+      onTouchStart={pause}
+      onTouchEnd={scheduleResume}
+      onMouseEnter={pause}
+      onMouseLeave={() => {
+        pausedRef.current = false;
+      }}
+      onWheel={pause}
+      aria-label={direction === 'ltr' ? 'Reviews scrolling left to right' : 'Reviews scrolling right to left'}
+    >
       <div className="reviews-marquee__track">
         {loop.map((r, i) => (
           <ReviewCard key={`${r.id}-${direction}-${i}`} review={r} />
@@ -37,6 +101,7 @@ export default function Reviews({ reviews }) {
     <section className="reviews" aria-label="Customer reviews">
       <div className="container">
         <h2 className="rail__title">Why Players Choose H2R Sports</h2>
+        <p className="reviews__hint">Swipe to browse · auto-scrolls both ways</p>
       </div>
       <div className="reviews-marquee-wrap">
         <MarqueeRow reviews={rowLeft} direction="ltr" />

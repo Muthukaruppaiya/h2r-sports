@@ -10,6 +10,13 @@ export const BRAND = {
   email: 'orders@h2rsports.in',
   whatsapp: '919876543210',
   address: 'Tamil Nadu, India',
+  facebook: 'https://www.facebook.com/',
+  youtube: 'https://www.youtube.com/',
+  social: {
+    instagram: 'https://www.instagram.com/h2r_sports_/',
+    facebook: 'https://www.facebook.com/',
+    youtube: 'https://www.youtube.com/',
+  },
   currency: 'INR',
   gstNote: 'Inclusive of GST',
   shippingNote: 'All India Free Shipping',

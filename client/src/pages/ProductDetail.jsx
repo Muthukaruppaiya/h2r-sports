@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
-import { formatINR, INDIA, savePercent, BRAND } from '../utils/india';
+import { formatINR, INDIA, BRAND } from '../utils/india';
 import { buildWhatsAppOrderUrl } from '../utils/whatsapp';
 import ProductGallery from '../components/ProductGallery';
 import { api } from '../api/store';
@@ -14,9 +14,11 @@ export default function ProductDetail() {
   const [sizeId, setSizeId] = useState('');
   const [qty, setQty] = useState(1);
   const [error, setError] = useState('');
+  const [descOpen, setDescOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+    setDescOpen(false);
     api
       .getProduct(id)
       .then((data) => {
@@ -50,7 +52,9 @@ export default function ProductDetail() {
   }
 
   const size = product.sizes.find((s) => s.id === sizeId) || product.sizes[0];
-  const save = savePercent(size.price, product.compareAt);
+  const trustItems = product.features?.length
+    ? product.features
+    : ['Free engraving', '6 months warranty', 'COD available', 'Pan-India delivery'];
 
   const cartPayload = {
     id: product.id,
@@ -86,7 +90,6 @@ export default function ProductDetail() {
             images={product.images || []}
             alt={product.name}
             badge={product.badge}
-            saveLabel={save ? `SAVE ${save}%` : null}
           />
         </div>
 
@@ -95,8 +98,20 @@ export default function ProductDetail() {
             ← {product.category}
           </Link>
           <p className="product-card__vendor">{BRAND.name}</p>
-          <h1>{product.name}</h1>
-          <p className="pdp__desc">{product.description}</p>
+          <h1 className="pdp__title">{product.name}</h1>
+          <div className={`pdp__desc-wrap${descOpen ? ' is-open' : ''}`}>
+            <p className="pdp__desc">{product.description}</p>
+            {!descOpen && product.description?.length > 90 && (
+              <button type="button" className="pdp__read-more" onClick={() => setDescOpen(true)}>
+                Read more
+              </button>
+            )}
+            {descOpen && product.description?.length > 90 && (
+              <button type="button" className="pdp__read-more" onClick={() => setDescOpen(false)}>
+                Show less
+              </button>
+            )}
+          </div>
 
           <div className="pdp__price-row">
             <span className="pdp__price">{formatINR(size.price)}</span>
@@ -161,7 +176,7 @@ export default function ProductDetail() {
           <p className="pdp__ship-note">{INDIA.returnsNote} · UPI / Cards / COD</p>
 
           <ul className="product__highlights">
-            {product.features.map((f) => (
+            {trustItems.map((f) => (
               <li key={f}>{f}</li>
             ))}
           </ul>
