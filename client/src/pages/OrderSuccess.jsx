@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { BRAND, formatINR } from '../utils/india';
+import { api } from '../api/store';
 
 export default function OrderSuccess() {
   const { id } = useParams();
@@ -10,11 +11,8 @@ export default function OrderSuccess() {
 
   useEffect(() => {
     if (order || !id) return;
-    fetch(`/api/orders/${id}`)
-      .then((r) => {
-        if (!r.ok) throw new Error('Order not found');
-        return r.json();
-      })
+    api
+      .getOrder(id)
       .then(setOrder)
       .catch((err) => setError(err.message));
   }, [id, order]);

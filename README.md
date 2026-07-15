@@ -1,34 +1,57 @@
-# StrikePro India — Cricket Bat Shop
+# H2R Sports — Cricket Bat Shop
 
-Shopify-style storefront inspired by [Valley Sports Kashmir](https://valleysportskashmir.com/) — catalog home, collections, product grids, COD/UPI messaging.
+React storefront for H2R Sports (Tamil Nadu). Frontend-only — works locally and on Netlify.
 
 ## Structure
 
 ```
-client/   React + Vite
-server/   Express API (products, collections, reviews)
-FRAMES/   (unused on storefront — kept for assets)
+client/     React + Vite (the live app)
+server/     Optional Express API (not needed for Netlify)
+netlify.toml
 ```
+
+## Develop (frontend only)
+
+```bash
+npm install
+npm install --prefix client
+npm run dev
+```
+
+Open `http://localhost:5173`. Products, collections, and reviews load from `client/src/data/catalogue.js`. Orders save in the browser (`localStorage`).
+
+Optional Express API (local only, not required):
+
+```bash
+npm run dev:server
+```
+
+## Build / Netlify
+
+Root `netlify.toml` builds the client and publishes `client/dist`. SPA routes redirect to `index.html`.
+
+```bash
+npm run build
+```
+
+Redeploy on Netlify after pushing these changes.
 
 ## Pages
 
 | Path | Description |
 |------|-------------|
-| `/` | Shop homepage — collections, top selling, trust strip, loved bats, reviews |
+| `/` | Home — collections, top selling, reviews |
 | `/collections/:slug` | hard-tennis · soft-tennis · season |
 | `/shop` | All products + filters |
-| `/shop/:id` | Product detail + bag |
+| `/shop/:id` | Product detail |
+| `/cart` | Cart |
+| `/checkout` | Checkout (COD / UPI / Card demo) |
+| `/order/:id` | Order confirmation |
 
 ## Product images
 
-Put multiple photos per bat in:
-
 ```
 client/public/products/<product-id>/
-  01-front.jpg
-  02-side.jpg
-  03-scoop.jpg
-  ...
+  01-front.svg
+  …
 ```
-
-The API auto-loads every `.jpg/.png/.webp/.svg` in that folder (sorted). Product detail shows a gallery with thumbnails + next/prev. Cards show the first image and a “N photos” badge.# h2r-sports

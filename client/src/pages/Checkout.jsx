@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { BRAND, formatINR, INDIAN_STATES } from '../utils/india';
+import { api } from '../api/store';
 
 const emptyForm = {
   name: '',
@@ -71,13 +72,7 @@ export default function Checkout() {
     };
 
     try {
-      const res = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Order failed');
+      const data = await api.createOrder(payload);
       clear();
       navigate(`/order/${data.order.id}`, { state: { order: data.order } });
     } catch (err) {

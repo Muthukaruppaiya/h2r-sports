@@ -4,6 +4,7 @@ import { useCart } from '../context/CartContext';
 import { formatINR, INDIA, savePercent, BRAND } from '../utils/india';
 import { buildWhatsAppOrderUrl } from '../utils/whatsapp';
 import ProductGallery from '../components/ProductGallery';
+import { api } from '../api/store';
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -16,11 +17,8 @@ export default function ProductDetail() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/products/${id}`)
-      .then((r) => {
-        if (!r.ok) throw new Error('Not found');
-        return r.json();
-      })
+    api
+      .getProduct(id)
       .then((data) => {
         if (cancelled) return;
         setProduct(data);

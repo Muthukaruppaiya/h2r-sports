@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
+import { api } from '../api/store';
 
 const CATEGORIES = ['All', 'Hard Tennis', 'Soft Tennis', 'Season'];
 const SORTS = [
@@ -22,11 +23,10 @@ export default function Shop() {
     async function load() {
       setLoading(true);
       try {
-        const params = new URLSearchParams();
-        if (category !== 'All') params.set('category', category);
-        if (query.trim()) params.set('q', query.trim());
-        const res = await fetch(`/api/products?${params}`);
-        const data = await res.json();
+        const data = await api.getProducts({
+          category: category === 'All' ? undefined : category,
+          q: query.trim() || undefined,
+        });
         if (!cancelled) setProducts(data.products || []);
       } catch {
         if (!cancelled) setProducts([]);

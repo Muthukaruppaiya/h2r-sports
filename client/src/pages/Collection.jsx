@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
+import { api } from '../api/store';
 
 export default function Collection() {
   const { slug } = useParams();
@@ -12,11 +13,8 @@ export default function Collection() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetch(`/api/collections/${slug}`)
-      .then((r) => {
-        if (!r.ok) throw new Error('Not found');
-        return r.json();
-      })
+    api
+      .getCollection(slug)
       .then((data) => {
         if (cancelled) return;
         setCollection(data.collection);

@@ -4,6 +4,7 @@ import CollectionGrid from '../components/CollectionGrid';
 import ProductRail from '../components/ProductRail';
 import TrustStrip from '../components/TrustStrip';
 import Reviews from '../components/Reviews';
+import { api } from '../api/store';
 
 export default function Home() {
   const [collections, setCollections] = useState([]);
@@ -20,12 +21,12 @@ export default function Home() {
     async function load() {
       try {
         const [cols, top, tennis, season, revs, info] = await Promise.all([
-          fetch('/api/collections').then((r) => r.json()),
-          fetch('/api/products?topSelling=true').then((r) => r.json()),
-          fetch('/api/products?collection=hard-tennis&mostLoved=true').then((r) => r.json()),
-          fetch('/api/products?collection=season&mostLoved=true').then((r) => r.json()),
-          fetch('/api/reviews').then((r) => r.json()),
-          fetch('/api/store-info').then((r) => r.json()),
+          api.getCollections(),
+          api.getProducts({ topSelling: true }),
+          api.getProducts({ collection: 'hard-tennis', mostLoved: true }),
+          api.getProducts({ collection: 'season', mostLoved: true }),
+          api.getReviews(),
+          api.getStoreInfo(),
         ]);
         if (cancelled) return;
         setCollections(cols.collections || []);
@@ -54,7 +55,7 @@ export default function Home() {
           <p className="home-banner__eyebrow">Tamil Nadu cricket bats · @h2r_sports_</p>
           <h1>H2R Sports — bats built for Indian cricket.</h1>
           <p>
-            Hard tennis, soft tennis, and season willow bats. Select size, add to bag, checkout with
+            Hard tennis, soft tennis, and season willow bats. Select size, add to cart, checkout with
             UPI / Card / COD — All India delivery.
           </p>
           <div className="home-banner__actions">
