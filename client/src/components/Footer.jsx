@@ -58,7 +58,7 @@ export default function Footer() {
             <h3>Help</h3>
             <a href={`tel:${BRAND.phone.replace(/\s/g, '')}`}>Call us</a>
             <a href={`mailto:${BRAND.email}`}>Email support</a>
-            <Link to="/shop">Track / reorder</Link>
+            <Link to="/my-orders">My Orders</Link>
           </div>
         </nav>
       </div>

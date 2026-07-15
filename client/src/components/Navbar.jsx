@@ -97,6 +97,9 @@ export default function Navbar() {
           <NavLink to="/shop" onClick={close}>
             All Products
           </NavLink>
+          <NavLink to="/my-orders" onClick={close} style={{ color: 'var(--accent)', fontWeight: '600' }}>
+            Account
+          </NavLink>
         </nav>
 
         <div className="navbar__actions">

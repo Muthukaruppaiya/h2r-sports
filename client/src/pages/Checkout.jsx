@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { BRAND, formatINR, INDIAN_STATES } from '../utils/india';
@@ -24,7 +24,17 @@ const emptyForm = {
 export default function Checkout() {
   const { items, total, clear } = useCart();
   const navigate = useNavigate();
-  const [form, setForm] = useState(emptyForm);
+  
+  const [form, setForm] = useState(() => {
+    try {
+      const userStr = localStorage.getItem('h2r_user');
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        return { ...emptyForm, name: user.name || '', email: user.email || '', phone: user.phone || '' };
+      }
+    } catch(e) {}
+    return emptyForm;
+  });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -34,6 +44,14 @@ export default function Checkout() {
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
   const canSubmit = useMemo(() => items.length > 0 && !submitting, [items.length, submitting]);
+
+  // Auth guard — redirect to login if not logged in
+  useEffect(() => {
+    const token = localStorage.getItem('h2r_token');
+    if (!token) {
+      navigate('/login?redirect=checkout', { replace: true });
+    }
+  }, [navigate]);
 
   async function placeOrder(e) {
     e.preventDefault();

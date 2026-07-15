@@ -1,9 +1,19 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { formatINR, INDIA } from '../utils/india';
 
 export default function Cart() {
   const { items, total, setQty, removeItem, clear, count } = useCart();
+  const navigate = useNavigate();
+  const isLoggedIn = !!localStorage.getItem('h2r_token');
+
+  const handleCheckout = () => {
+    if (!isLoggedIn) {
+      navigate('/login?redirect=checkout');
+    } else {
+      navigate('/checkout');
+    }
+  };
 
   if (items.length === 0) {
     return (
@@ -80,9 +90,49 @@ export default function Cart() {
             </div>
           </div>
           <p className="cart-drawer__ship">✓ {INDIA.shippingNote}</p>
-          <Link to="/checkout" className="btn btn--primary btn--full">
-            Proceed to checkout
-          </Link>
+
+          {!isLoggedIn && (
+            <p style={{ 
+              marginBottom: '0.75rem', 
+              padding: '0.6rem 0.75rem', 
+              background: '#fff8e1', 
+              borderRadius: '8px', 
+              color: '#7a5f00', 
+              fontSize: '0.82rem',
+              border: '1px solid #ffe082'
+            }}>
+              🔒 You need to <strong>log in</strong> or <strong>register</strong> to place an order.
+            </p>
+          )}
+
+          <button
+            type="button"
+            className="btn btn--primary btn--full"
+            onClick={handleCheckout}
+          >
+            {isLoggedIn ? 'Proceed to checkout' : 'Log in to checkout'}
+          </button>
+
+          {!isLoggedIn && (
+            <Link
+              to="/register?redirect=checkout"
+              className="btn btn--full"
+              style={{
+                marginTop: '0.75rem',
+                display: 'block',
+                textAlign: 'center',
+                padding: '12px',
+                borderRadius: '8px',
+                border: '1px solid var(--navy)',
+                color: 'var(--navy)',
+                fontWeight: '700',
+                fontSize: '0.875rem',
+              }}
+            >
+              New customer? Sign up
+            </Link>
+          )}
+
           <Link to="/shop" className="cart-page__continue">
             ← Continue shopping
           </Link>
