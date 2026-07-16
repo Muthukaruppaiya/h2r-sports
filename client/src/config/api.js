@@ -1,6 +1,9 @@
-const DEFAULT_ORIGIN = 'http://localhost:5000';
+const LOCAL_ORIGIN = 'http://localhost:5000';
+const PRODUCTION_ORIGIN = 'https://h2r-sports.onrender.com';
 
-/** Server origin without /api — set VITE_API_URL in Netlify (e.g. https://your-api.onrender.com/api) */
+/** Local dev → localhost; production build → Render (unless VITE_API_URL is set) */
+const DEFAULT_ORIGIN = import.meta.env.DEV ? LOCAL_ORIGIN : PRODUCTION_ORIGIN;
+
 export const API_ORIGIN = (
   import.meta.env.VITE_API_URL
     ? String(import.meta.env.VITE_API_URL).replace(/\/api\/?$/, '')
