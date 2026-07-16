@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { formatINR } from '../utils/india';
+import { mediaUrl } from '../config/api.js';
 
 export default function ProductCard({ product }) {
   const { addItem } = useCart();
   const [swapped, setSwapped] = useState(false);
   const defaultSize = product.sizes?.[0];
-  const primary = product.image || product.images?.[0] || '/products/placeholders/front.svg';
-  const secondary = product.hoverImage || product.images?.[1] || primary;
+  const primary = mediaUrl(product.image || product.images?.[0] || '/products/placeholders/front.svg');
+  const secondary = mediaUrl(product.hoverImage || product.images?.[1] || primary);
   const showSecondary = swapped && secondary !== primary;
   const imageCount = product.images?.length || 0;
 
@@ -67,9 +68,9 @@ export default function ProductCard({ product }) {
             addItem({
               id: product.id,
               name: product.name,
-              sizeId: defaultSize.id,
-              sizeLabel: defaultSize.label,
-              price: defaultSize.price,
+              sizeId: defaultSize?.id || 'default',
+              sizeLabel: defaultSize?.label || 'Standard',
+              price: defaultSize?.price || product.price,
               qty: 1,
             })
           }

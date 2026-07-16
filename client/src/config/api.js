@@ -17,12 +17,19 @@ export function apiUrl(path = '') {
   return `${API_BASE_URL}${suffix}`;
 }
 
-/** Static assets on Netlify vs uploads served from the API (Render) */
+/** Resolve product/media URLs for Netlify ↔ Render split hosting */
 export function mediaUrl(url) {
   if (!url) return '';
-  if (url.startsWith('http')) return url;
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+    return url;
+  }
   const path = url.startsWith('/') ? url : `/${url}`;
-  if (path.startsWith('/marketing/') || path.startsWith('/products/uploads/')) {
+  // Uploads & marketing live on the API host (Render). Local public assets stay same-origin.
+  if (
+    path.startsWith('/products/uploads/') ||
+    path.startsWith('/marketing/') ||
+    path.startsWith('/frames/')
+  ) {
     return `${API_ORIGIN}${path}`;
   }
   return path;

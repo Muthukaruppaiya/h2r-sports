@@ -28,7 +28,13 @@ const COLLECTIONS = [
     id: 'season',
     name: 'Season Bats',
     slug: 'season',
-    blurb: 'Kashmir & English willow leather-ball bats — optimal weight and balance for match cricket.',
+    blurb: 'Kashmir willow leather-ball bats — optimal weight and balance for match cricket.',
+  },
+  {
+    id: 'english-willow',
+    name: 'English Willow Bats',
+    slug: 'english-willow',
+    blurb: 'Premium English willow season bats — elite pickup and finish for serious match cricket.',
   },
 ];
 
@@ -250,14 +256,15 @@ async function seed() {
   await mongoose.connect(MONGO_URI);
   console.log('MongoDB connected for seeding…');
 
-  // Collections
-  const colCount = await Collection.countDocuments();
-  if (colCount === 0) {
-    await Collection.insertMany(COLLECTIONS);
-    console.log(`✓ Seeded ${COLLECTIONS.length} collections`);
-  } else {
-    console.log(`  Collections already seeded (${colCount} found) — skipping`);
+  // Collections — add any missing ones
+  for (const col of COLLECTIONS) {
+    const exists = await Collection.findOne({ id: col.id });
+    if (!exists) {
+      await Collection.create(col);
+      console.log(`✓ Added collection: ${col.slug}`);
+    }
   }
+  console.log(`  Collections ready (${await Collection.countDocuments()} total)`);
 
   // Products — only seed when empty (use npm run clear-catalog to wipe)
   const prodCount = await Product.countDocuments();

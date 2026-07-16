@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { mediaUrl } from '../config/api.js';
 
 export default function ProductGallery({ images = [], alt = 'Product', badge }) {
-  const list = images.length ? images : ['/products/placeholders/front.svg'];
+  const list = (images.length ? images : ['/products/placeholders/front.svg']).map(mediaUrl);
   const [active, setActive] = useState(0);
   const [fading, setFading] = useState(false);
   const touchX = useRef(null);
@@ -46,6 +47,9 @@ export default function ProductGallery({ images = [], alt = 'Product', badge }) 
           src={current}
           alt={`${alt} — image ${active + 1}`}
           className={`gallery__image${fading ? ' is-fading' : ''}`}
+          onError={(e) => {
+            e.currentTarget.src = '/products/placeholders/front.svg';
+          }}
         />
 
         {list.length > 1 && (

@@ -62,7 +62,10 @@ export default function ProductDetail() {
     );
   }
 
-  const size = product.sizes.find((s) => s.id === sizeId) || product.sizes[0];
+  const sizes = product.sizes?.length
+    ? product.sizes
+    : [{ id: 'default', label: 'Standard', price: product.price }];
+  const size = sizes.find((s) => s.id === sizeId) || sizes[0];
   const trustItems = product.features?.length
     ? product.features
     : ['Free engraving', '6 months warranty', 'COD available', 'Pan-India delivery'];
@@ -141,22 +144,30 @@ export default function ProductDetail() {
           <dl className="pdp__specs">
             <div>
               <dt>Willow</dt>
-              <dd>{product.willow}</dd>
+              <dd>{product.willow?.trim() || '—'}</dd>
             </div>
             <div>
               <dt>Weight</dt>
-              <dd>{product.weight}</dd>
+              <dd>{product.weight?.trim() || '—'}</dd>
             </div>
             <div>
               <dt>Made in</dt>
-              <dd>{product.madeIn}</dd>
+              <dd>{product.madeIn?.trim() || 'Tamil Nadu, India'}</dd>
             </div>
           </dl>
+
+          {product.features?.length > 0 && (
+            <ul className="product__highlights pdp__feature-list">
+              {product.features.map((f) => (
+                <li key={f}>{f}</li>
+              ))}
+            </ul>
+          )}
 
           <div className="pdp__field">
             <label htmlFor="pdp-size">Size / handle</label>
             <select id="pdp-size" value={sizeId} onChange={(e) => setSizeId(e.target.value)}>
-              {product.sizes.map((s) => (
+              {sizes.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.label} — {formatINR(s.price)}
                 </option>
@@ -194,11 +205,13 @@ export default function ProductDetail() {
 
           <p className="pdp__ship-note">{INDIA.returnsNote} · UPI / Cards / COD</p>
 
-          <ul className="product__highlights">
-            {trustItems.map((f) => (
-              <li key={f}>{f}</li>
-            ))}
-          </ul>
+          {!product.features?.length && (
+            <ul className="product__highlights">
+              {trustItems.map((f) => (
+                <li key={f}>{f}</li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
 

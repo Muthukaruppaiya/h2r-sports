@@ -811,7 +811,9 @@ app.post('/api/admin/upload', protect, admin, upload.array('images', 5), (req, r
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: 'No files uploaded' });
     }
-    const urls = req.files.map(file => `/products/uploads/${file.filename}`);
+    // Store absolute API URLs so Netlify can load images from Render
+    const origin = `${req.protocol}://${req.get('host')}`;
+    const urls = req.files.map((file) => `${origin}/products/uploads/${file.filename}`);
     res.json({ ok: true, urls });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -880,13 +882,21 @@ app.put('/api/admin/customers/:email', protect, admin, async (req, res) => {
 });
 
 // ─── Static assets ────────────────────────────────────────────────────────────
+app.use('/products', express.static(PRODUCTS_IMG_DIR, { maxAge: '1d' }));
 app.use('/frames', express.static(FRAMES_DIR, { maxAge: '1d', fallthrough: false }));
 app.use('/marketing', express.static(MARKETING_DIR, { maxAge: '1d' }));
 
 if (fs.existsSync(CLIENT_DIST)) {
   app.use(express.static(CLIENT_DIST));
   app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api') || req.path.startsWith('/frames') || req.path.startsWith('/marketing')) return next();
+    if (
+      req.path.startsWith('/api') ||
+      req.path.startsWith('/frames') ||
+      req.path.startsWith('/marketing') ||
+      req.path.startsWith('/products')
+    ) {
+      return next();
+    }
     res.sendFile(path.join(CLIENT_DIST, 'index.html'));
   });
 }
