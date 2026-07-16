@@ -13,28 +13,28 @@ const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/h2r-sports
 
 const COLLECTIONS = [
   {
-    id: 'hard-tennis',
-    name: 'Hard Tennis Bats',
-    slug: 'hard-tennis',
-    blurb: 'Unleash your power on the ground — engineered for red/heavy tennis ball cricket across India.',
+    id: 'karrupu-edition',
+    name: 'H2R Karrupu Edition',
+    slug: 'karrupu-edition',
+    blurb: 'Premium black edition bats — powerful pickup, sharp finish, built for hard-hitting cricket.',
   },
   {
-    id: 'soft-tennis',
-    name: 'Soft Tennis Bats',
-    slug: 'soft-tennis',
-    blurb: 'Precision soft tennis edition — control every shot with light pickup and a wide sweet spot.',
+    id: 'killer-edition',
+    name: 'Killer Edition',
+    slug: 'killer-edition',
+    blurb: 'Aggressive profile bats engineered for big hitting and match-day dominance.',
   },
   {
-    id: 'season',
-    name: 'Season Bats',
-    slug: 'season',
-    blurb: 'Kashmir willow leather-ball bats — optimal weight and balance for match cricket.',
+    id: 'stumper-edition',
+    name: 'Stumper Edition',
+    slug: 'stumper-edition',
+    blurb: 'Balanced bats for control, timing, and clean middle — trusted all-round performance.',
   },
   {
-    id: 'english-willow',
-    name: 'English Willow Bats',
-    slug: 'english-willow',
-    blurb: 'Premium English willow season bats — elite pickup and finish for serious match cricket.',
+    id: 'soft-tennis-kerala-scoop',
+    name: 'Soft Tennis Bat [ Kerala Scoop ]',
+    slug: 'soft-tennis-kerala-scoop',
+    blurb: 'Kerala scoop soft tennis bats — light hands, wide sweet spot, precision stroke play.',
   },
 ];
 
@@ -256,15 +256,10 @@ async function seed() {
   await mongoose.connect(MONGO_URI);
   console.log('MongoDB connected for seeding…');
 
-  // Collections — add any missing ones
-  for (const col of COLLECTIONS) {
-    const exists = await Collection.findOne({ id: col.id });
-    if (!exists) {
-      await Collection.create(col);
-      console.log(`✓ Added collection: ${col.slug}`);
-    }
-  }
-  console.log(`  Collections ready (${await Collection.countDocuments()} total)`);
+  // Collections — replace with current H2R edition types
+  await Collection.deleteMany({});
+  await Collection.insertMany(COLLECTIONS);
+  console.log(`✓ Synced ${COLLECTIONS.length} collections`);
 
   // Products — only seed when empty (use npm run clear-catalog to wipe)
   const prodCount = await Product.countDocuments();

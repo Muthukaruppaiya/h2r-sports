@@ -34,25 +34,29 @@ function withImages(product) {
 
 export const COLLECTIONS = [
   {
-    id: 'hard-tennis',
-    name: 'Hard Tennis Bats',
-    slug: 'hard-tennis',
+    id: 'karrupu-edition',
+    name: 'H2R Karrupu Edition',
+    slug: 'karrupu-edition',
     blurb:
-      'Unleash your power on the ground — engineered for red/heavy tennis ball cricket across India.',
+      'Premium black edition bats — powerful pickup, sharp finish, built for hard-hitting cricket.',
   },
   {
-    id: 'soft-tennis',
-    name: 'Soft Tennis Bats',
-    slug: 'soft-tennis',
-    blurb:
-      'Precision soft tennis edition — control every shot with light pickup and a wide sweet spot.',
+    id: 'killer-edition',
+    name: 'Killer Edition',
+    slug: 'killer-edition',
+    blurb: 'Aggressive profile bats engineered for big hitting and match-day dominance.',
   },
   {
-    id: 'season',
-    name: 'Season Bats',
-    slug: 'season',
-    blurb:
-      'Kashmir & English willow leather-ball bats — optimal weight and balance for match cricket.',
+    id: 'stumper-edition',
+    name: 'Stumper Edition',
+    slug: 'stumper-edition',
+    blurb: 'Balanced bats for control, timing, and clean middle — trusted all-round performance.',
+  },
+  {
+    id: 'soft-tennis-kerala-scoop',
+    name: 'Soft Tennis Bat [ Kerala Scoop ]',
+    slug: 'soft-tennis-kerala-scoop',
+    blurb: 'Kerala scoop soft tennis bats — light hands, wide sweet spot, precision stroke play.',
   },
 ];
 

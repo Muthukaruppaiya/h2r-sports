@@ -42,9 +42,10 @@ export default function Footer() {
         <nav className="footer__links">
           <div className="footer__col">
             <h3>Shop</h3>
-            <Link to="/collections/hard-tennis">Hard Tennis</Link>
-            <Link to="/collections/soft-tennis">Soft Tennis</Link>
-            <Link to="/collections/season">Season Bats</Link>
+            <Link to="/collections/karrupu-edition">Karrupu Edition</Link>
+            <Link to="/collections/killer-edition">Killer Edition</Link>
+            <Link to="/collections/stumper-edition">Stumper Edition</Link>
+            <Link to="/collections/soft-tennis-kerala-scoop">Kerala Scoop</Link>
             <Link to="/shop">All Products</Link>
           </div>
           <div className="footer__col">

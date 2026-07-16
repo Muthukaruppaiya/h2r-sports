@@ -85,14 +85,17 @@ export default function Navbar() {
           <NavLink to="/" end onClick={close}>
             Home
           </NavLink>
-          <NavLink to="/collections/hard-tennis" onClick={close}>
-            Hard Tennis
+          <NavLink to="/collections/karrupu-edition" onClick={close}>
+            Karrupu
           </NavLink>
-          <NavLink to="/collections/soft-tennis" onClick={close}>
-            Soft Tennis
+          <NavLink to="/collections/killer-edition" onClick={close}>
+            Killer
           </NavLink>
-          <NavLink to="/collections/season" onClick={close}>
-            Season Bats
+          <NavLink to="/collections/stumper-edition" onClick={close}>
+            Stumper
+          </NavLink>
+          <NavLink to="/collections/soft-tennis-kerala-scoop" onClick={close}>
+            Kerala Scoop
           </NavLink>
           <NavLink to="/shop" onClick={close}>
             All Products

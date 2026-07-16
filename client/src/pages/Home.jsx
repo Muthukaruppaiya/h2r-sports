@@ -10,8 +10,7 @@ import { api } from '../api/store';
 export default function Home() {
   const [collections, setCollections] = useState([]);
   const [topSelling, setTopSelling] = useState([]);
-  const [lovedTennis, setLovedTennis] = useState([]);
-  const [lovedSeason, setLovedSeason] = useState([]);
+  const [mostLoved, setMostLoved] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [benefits, setBenefits] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,19 +20,17 @@ export default function Home() {
 
     async function load() {
       try {
-        const [cols, top, tennis, season, revs, info] = await Promise.all([
+        const [cols, top, loved, revs, info] = await Promise.all([
           api.getCollections(),
           api.getProducts({ topSelling: true }),
-          api.getProducts({ collection: 'hard-tennis', mostLoved: true }),
-          api.getProducts({ collection: 'season', mostLoved: true }),
+          api.getProducts({ mostLoved: true }),
           api.getReviews(),
           api.getStoreInfo(),
         ]);
         if (cancelled) return;
         setCollections(cols.collections || []);
         setTopSelling(top.products || []);
-        setLovedTennis(tennis.products || []);
-        setLovedSeason(season.products || []);
+        setMostLoved(loved.products || []);
         setReviews(revs.reviews || []);
         setBenefits(info.benefits || []);
       } catch {
@@ -54,7 +51,7 @@ export default function Home() {
       <section className="home-banner">
         <div className="home-banner__media" aria-hidden="true">
           <img
-            src="/hero/banner.jpg"
+            src="/hero/h2r-workshop.png"
             alt=""
             className="home-banner__photo"
             fetchPriority="high"
@@ -62,18 +59,19 @@ export default function Home() {
           <div className="home-banner__scrim" />
         </div>
         <div className="container home-banner__inner">
-          <p className="home-banner__eyebrow">Tamil Nadu cricket bats · @h2r_sports_</p>
-          <h1>H2R Sports — bats built for Indian cricket.</h1>
+          <p className="home-banner__eyebrow">H2R Sports</p>
+          <h1>India’s Trusted Cricket Bat Seller</h1>
           <p>
-            Hard tennis, soft tennis, and season willow bats. Select size, add to cart, checkout with
-            UPI / Card / COD — All India delivery.
+            Exclusive Hard Tennis, Soft Tennis &amp; Premium Willow Cricket Bats. Crafted for powerful
+            hitting, perfect balance, and lasting performance. Trusted by thousands of cricketers
+            across India.
           </p>
           <div className="home-banner__actions">
             <Link to="/shop" className="btn btn--primary">
               Shop all bats
             </Link>
-            <Link to="/collections/hard-tennis" className="btn btn--outline">
-              Hard tennis
+            <Link to="/collections/karrupu-edition" className="btn btn--outline">
+              Karrupu Edition
             </Link>
           </div>
         </div>
@@ -83,8 +81,7 @@ export default function Home() {
       <ProductRail title="Top Selling" products={topSelling} loading={loading} />
       <AnnouncementBar variant="inline" />
       <TrustStrip benefits={benefits} />
-      <ProductRail title="Most Loved Tennis Bats" products={lovedTennis} loading={loading} />
-      <ProductRail title="Most Loved Season Bats" products={lovedSeason} loading={loading} />
+      <ProductRail title="Most Loved Bats" products={mostLoved} loading={loading} />
       <Reviews reviews={reviews} />
     </main>
   );

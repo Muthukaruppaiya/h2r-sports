@@ -8,8 +8,8 @@ const EMPTY_FORM = {
   tagline: '',
   price: 0,
   compareAt: '',
-  collection: 'hard-tennis',
-  category: 'Hard Tennis',
+  collection: 'karrupu-edition',
+  category: 'H2R Karrupu Edition',
   badge: '',
   willow: '',
   weight: '',
@@ -24,10 +24,14 @@ const EMPTY_FORM = {
 };
 
 const COLLECTIONS = [
-  { id: 'hard-tennis', label: 'Hard Tennis', category: 'Hard Tennis' },
-  { id: 'soft-tennis', label: 'Soft Tennis', category: 'Soft Tennis' },
-  { id: 'season', label: 'Season / Kashmir', category: 'Season' },
-  { id: 'english-willow', label: 'English Willow', category: 'English Willow' },
+  { id: 'karrupu-edition', label: 'H2R Karrupu Edition', category: 'H2R Karrupu Edition' },
+  { id: 'killer-edition', label: 'Killer Edition', category: 'Killer Edition' },
+  { id: 'stumper-edition', label: 'Stumper Edition', category: 'Stumper Edition' },
+  {
+    id: 'soft-tennis-kerala-scoop',
+    label: 'Soft Tennis Bat [ Kerala Scoop ]',
+    category: 'Soft Tennis Bat [ Kerala Scoop ]',
+  },
 ];
 
 const inputStyle = {
@@ -98,7 +102,7 @@ export default function Inventory() {
         tagline: product.tagline || '',
         price: product.price || 0,
         compareAt: product.compareAt || '',
-        collection: product.collection || 'hard-tennis',
+        collection: product.collection || 'karrupu-edition',
         category: product.category || '',
         badge: product.badge || '',
         willow: product.willow || '',
