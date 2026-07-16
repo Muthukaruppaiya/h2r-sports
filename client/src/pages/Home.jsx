@@ -9,6 +9,7 @@ import { api } from '../api/store';
 
 export default function Home() {
   const [collections, setCollections] = useState([]);
+  const [featured, setFeatured] = useState([]);
   const [topSelling, setTopSelling] = useState([]);
   const [mostLoved, setMostLoved] = useState([]);
   const [reviews, setReviews] = useState([]);
@@ -20,17 +21,19 @@ export default function Home() {
 
     async function load() {
       try {
-        const [cols, top, loved, revs, info] = await Promise.all([
+        const [cols, all, revs, info] = await Promise.all([
           api.getCollections(),
-          api.getProducts({ topSelling: true }),
-          api.getProducts({ mostLoved: true }),
+          api.getProducts(),
           api.getReviews(),
           api.getStoreInfo(),
         ]);
         if (cancelled) return;
+
+        const products = all.products || [];
         setCollections(cols.collections || []);
-        setTopSelling(top.products || []);
-        setMostLoved(loved.products || []);
+        setFeatured(products);
+        setTopSelling(products.filter((p) => p.topSelling));
+        setMostLoved(products.filter((p) => p.mostLoved));
         setReviews(revs.reviews || []);
         setBenefits(info.benefits || []);
       } catch {
@@ -78,10 +81,15 @@ export default function Home() {
       </section>
 
       <CollectionGrid collections={collections} />
-      <ProductRail title="Top Selling" products={topSelling} loading={loading} />
+      <ProductRail title="Our Bats" products={featured} loading={loading} />
       <AnnouncementBar variant="inline" />
       <TrustStrip benefits={benefits} />
-      <ProductRail title="Most Loved Bats" products={mostLoved} loading={loading} />
+      {topSelling.length > 0 && (
+        <ProductRail title="Top Selling" products={topSelling} loading={false} />
+      )}
+      {mostLoved.length > 0 && (
+        <ProductRail title="Most Loved Bats" products={mostLoved} loading={false} />
+      )}
       <Reviews reviews={reviews} />
     </main>
   );
