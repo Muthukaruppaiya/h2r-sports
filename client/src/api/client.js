@@ -48,6 +48,20 @@ const client = {
       throw err;
     }
     return { data: body };
+  },
+
+  async delete(endpoint) {
+    const res = await fetch(`${BASE_URL}${endpoint}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(body.error || `DELETE ${endpoint} failed`);
+      err.response = { data: body, status: res.status };
+      throw err;
+    }
+    return { data: body };
   }
 };
 

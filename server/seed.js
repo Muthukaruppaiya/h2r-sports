@@ -259,10 +259,14 @@ async function seed() {
     console.log(`  Collections already seeded (${colCount} found) — skipping`);
   }
 
-  // Products
-  await Product.deleteMany({});
-  await Product.insertMany(PRODUCTS);
-  console.log(`✓ Re-seeded ${PRODUCTS.length} products with images`);
+  // Products — only seed when empty (use npm run clear-catalog to wipe)
+  const prodCount = await Product.countDocuments();
+  if (prodCount === 0) {
+    await Product.insertMany(PRODUCTS);
+    console.log(`✓ Seeded ${PRODUCTS.length} products`);
+  } else {
+    console.log(`  Products already exist (${prodCount} found) — skipping`);
+  }
 
   // Reviews
   const revCount = await Review.countDocuments();

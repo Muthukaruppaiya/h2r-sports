@@ -97,11 +97,7 @@ export default function Inventory() {
     setUploading(true);
     try {
       // Create a specific config for multipart/form-data
-      const res = await api.post('/admin/upload', data, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
+      const res = await api.post('/admin/upload', data);
       if (res.data.urls) {
         const currentImages = formData.images ? formData.images.split(',').map(i => i.trim()).filter(i => i) : [];
         const newImages = [...currentImages, ...res.data.urls];
@@ -128,17 +124,22 @@ export default function Inventory() {
       }
 
       const payload = {
-        ...formData,
+        name: formData.name,
+        tagline: formData.tagline,
         price: Number(formData.price),
         compareAt: formData.compareAt ? Number(formData.compareAt) : null,
+        collection: formData.collection,
+        category: formData.category,
+        badge: formData.badge,
+        inStock: formData.inStock,
         images: imagesArray,
-        sizes: sizesArray
+        sizes: sizesArray,
       };
 
       if (editingProduct) {
         await api.put(`/admin/products/${editingProduct.id}`, payload);
       } else {
-        await api.post('/admin/products', payload);
+        await api.post('/admin/products', { ...payload, id: formData.id.trim() });
       }
       closeModal();
       fetchProducts();

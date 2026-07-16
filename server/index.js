@@ -66,6 +66,43 @@ function withImages(product) {
   return { ...src, images, image: images[0] };
 }
 
+function sanitizeProductInput(body, { isCreate = false } = {}) {
+  const allowed = [
+    'id', 'name', 'tagline', 'price', 'compareAt', 'collection', 'category', 'badge',
+    'weight', 'willow', 'madeIn', 'topSelling', 'mostLoved', 'inStock', 'sizes',
+    'features', 'images', 'description',
+  ];
+  const out = {};
+  for (const key of allowed) {
+    if (body[key] === undefined) continue;
+    out[key] = body[key];
+  }
+  if (out.price !== undefined) out.price = Number(out.price);
+  if (out.compareAt === '' || out.compareAt === null || out.compareAt === undefined) {
+    out.compareAt = null;
+  } else if (out.compareAt !== undefined) {
+    out.compareAt = Number(out.compareAt);
+  }
+  if (out.inStock !== undefined) out.inStock = Boolean(out.inStock);
+  if (Array.isArray(out.sizes)) {
+    out.sizes = out.sizes
+      .map((s) => ({
+        id: String(s.id || '').trim(),
+        label: String(s.label || '').trim(),
+        price: Number(s.price) || out.price || 0,
+      }))
+      .filter((s) => s.id && s.label);
+  }
+  if (Array.isArray(out.images)) {
+    out.images = out.images.map((img) => String(img).trim()).filter(Boolean);
+  }
+  if (isCreate && !out.id) throw new Error('Product id is required');
+  if (isCreate && (!out.name || !out.collection || !out.category || !out.price)) {
+    throw new Error('Name, collection, category, and price are required');
+  }
+  return out;
+}
+
 // ─── Express app ─────────────────────────────────────────────────────────────
 const app = express();
 app.use(cors());
@@ -743,25 +780,29 @@ app.get('/api/admin/reports/overview', protect, admin, async (req, res) => {
 
 app.put('/api/admin/products/:id', protect, admin, async (req, res) => {
   try {
-    const updates = req.body;
+    const updates = sanitizeProductInput(req.body);
+    delete updates.id;
     const product = await Product.findOneAndUpdate(
       { id: req.params.id },
       { $set: updates },
-      { new: true }
+      { new: true, runValidators: true }
     ).lean();
     if (!product) return res.status(404).json({ error: 'Product not found' });
-    res.json({ ok: true, product });
+    res.json({ ok: true, product: withImages(product) });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(400).json({ error: err.message });
   }
 });
 
 app.post('/api/admin/products', protect, admin, async (req, res) => {
   try {
-    const product = await Product.create(req.body);
-    res.status(201).json({ ok: true, product });
+    const data = sanitizeProductInput(req.body, { isCreate: true });
+    const exists = await Product.findOne({ id: data.id });
+    if (exists) return res.status(400).json({ error: 'Product id already exists' });
+    const product = await Product.create(data);
+    res.status(201).json({ ok: true, product: withImages(product.toObject()) });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(400).json({ error: err.message });
   }
 });
 

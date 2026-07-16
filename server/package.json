@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node --watch index.js",
     "start": "node index.js",
-    "seed": "node seed.js"
+    "seed": "node seed.js",
+    "clear-catalog": "node clear-catalog.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

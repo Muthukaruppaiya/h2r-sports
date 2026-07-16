@@ -9,7 +9,8 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const redirect = searchParams.get('redirect'); // e.g. "checkout"
+  const redirect = searchParams.get('redirect');
+  const isAdminLogin = redirect === 'admin';
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -23,8 +24,10 @@ export default function Login() {
 
       if (res.data.role === 'admin') {
         navigate('/admin');
-      } else if (redirect) {
-        navigate(`/${redirect}`);
+      } else if (redirect === 'checkout') {
+        navigate('/checkout');
+      } else if (redirect === 'admin') {
+        setError('This account does not have admin access.');
       } else {
         navigate('/my-orders');
       }
@@ -36,55 +39,74 @@ export default function Login() {
   };
 
   return (
-    <div className="container" style={{ paddingTop: 'var(--header-offset)', paddingBottom: '4rem', maxWidth: '400px', margin: '0 auto' }}>
-      <h1 style={{ textAlign: 'center', marginBottom: '0.5rem', color: 'var(--navy)' }}>Log In</h1>
-
-      {redirect === 'checkout' && (
-        <p style={{ textAlign: 'center', marginBottom: '1.5rem', padding: '0.75rem 1rem', background: '#fff8e1', borderRadius: '8px', color: '#7a5f00', fontSize: '0.9rem', border: '1px solid #ffe082' }}>
-          Please log in or <Link to={`/register?redirect=checkout`} style={{ color: 'var(--accent)', fontWeight: '600' }}>create an account</Link> to complete your order.
-        </p>
-      )}
-
-      {error && (
-        <div style={{ padding: '1rem', background: '#ffebee', color: '#c62828', borderRadius: '8px', marginBottom: '1.5rem' }}>
-          {error}
-        </div>
-      )}
-
-      <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <div>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>Email Address</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            style={{ width: '100%', padding: '0.8rem', border: '1px solid var(--gray-200)', borderRadius: '8px' }}
-          />
+    <div className={`auth-page${isAdminLogin ? ' auth-page--admin' : ''}`}>
+      <div className="auth-page__card">
+        <div className="auth-page__brand">
+          <div className="auth-page__logo">H2R</div>
+          <div>
+            <p className="auth-page__eyebrow">{isAdminLogin ? 'Admin access' : 'Welcome back'}</p>
+            <h1 className="auth-page__title">{isAdminLogin ? 'Admin Log In' : 'Log In'}</h1>
+          </div>
         </div>
 
-        <div>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            style={{ width: '100%', padding: '0.8rem', border: '1px solid var(--gray-200)', borderRadius: '8px' }}
-          />
-        </div>
+        {redirect === 'checkout' && (
+          <div className="auth-page__notice auth-page__notice--warn">
+            Please log in or{' '}
+            <Link to="/register?redirect=checkout">create an account</Link> to complete your order.
+          </div>
+        )}
 
-        <button type="submit" disabled={loading} className="btn btn-primary" style={{ marginTop: '1rem' }}>
-          {loading ? 'Logging in...' : 'Log In'}
-        </button>
-      </form>
+        {isAdminLogin && (
+          <div className="auth-page__notice auth-page__notice--info">
+            Sign in with your admin credentials to open the H2R commerce panel.
+          </div>
+        )}
 
-      <p style={{ textAlign: 'center', marginTop: '2rem', color: 'var(--gray-600)' }}>
-        Don't have an account?{' '}
-        <Link to={redirect ? `/register?redirect=${redirect}` : '/register'} style={{ color: 'var(--accent)', fontWeight: '600' }}>
-          Sign up
-        </Link>
-      </p>
+        {error && <div className="auth-page__error">{error}</div>}
+
+        <form className="auth-page__form" onSubmit={handleLogin}>
+          <label className="auth-page__field">
+            <span>Email address</span>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+              placeholder="you@example.com"
+            />
+          </label>
+
+          <label className="auth-page__field">
+            <span>Password</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+              placeholder="Enter your password"
+            />
+          </label>
+
+          <button type="submit" disabled={loading} className="btn btn-primary auth-page__submit">
+            {loading ? 'Logging in…' : isAdminLogin ? 'Log in to Admin' : 'Log In'}
+          </button>
+        </form>
+
+        {!isAdminLogin && (
+          <p className="auth-page__footer">
+            Don&apos;t have an account?{' '}
+            <Link to={redirect ? `/register?redirect=${redirect}` : '/register'}>Sign up</Link>
+          </p>
+        )}
+
+        {isAdminLogin && (
+          <p className="auth-page__footer">
+            <Link to="/">← Back to store</Link>
+          </p>
+        )}
+      </div>
     </div>
   );
 }

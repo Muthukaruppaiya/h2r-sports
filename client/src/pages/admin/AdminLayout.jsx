@@ -112,6 +112,7 @@ function pathMatches(pathname, to, end) {
 export default function AdminLayout() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const initiallyOpen = useMemo(() => {
     const open = {};
@@ -127,19 +128,65 @@ export default function AdminLayout() {
     setOpenGroups((prev) => ({ ...prev, ...initiallyOpen }));
   }, [initiallyOpen]);
 
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    document.body.style.overflow = sidebarOpen ? 'hidden' : '';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [sidebarOpen]);
+
   const toggleGroup = (id) => {
     setOpenGroups((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
   return (
     <div className="zoho-admin">
-      <aside className="zoho-admin__sidebar">
-        <div className="zoho-admin__brand">
-          <div className="zoho-admin__brand-mark">H2R</div>
-          <div>
-            <strong>H2R Admin</strong>
-            <span>Commerce</span>
+      <header className="zoho-admin__mobile-bar">
+        <button
+          type="button"
+          className="zoho-admin__menu-btn"
+          aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+          aria-expanded={sidebarOpen}
+          onClick={() => setSidebarOpen((open) => !open)}
+        >
+          <span className="zoho-admin__menu-icon" aria-hidden="true" />
+        </button>
+        <div className="zoho-admin__mobile-title">
+          <strong>H2R Admin</strong>
+          <span>Commerce panel</span>
+        </div>
+      </header>
+
+      {sidebarOpen && (
+        <button
+          type="button"
+          className="zoho-admin__backdrop"
+          aria-label="Close menu"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <aside className={`zoho-admin__sidebar${sidebarOpen ? ' is-open' : ''}`}>
+        <div className="zoho-admin__sidebar-head">
+          <div className="zoho-admin__brand">
+            <div className="zoho-admin__brand-mark">H2R</div>
+            <div>
+              <strong>H2R Admin</strong>
+              <span>Commerce</span>
+            </div>
           </div>
+          <button
+            type="button"
+            className="zoho-admin__close-btn"
+            aria-label="Close menu"
+            onClick={() => setSidebarOpen(false)}
+          >
+            ×
+          </button>
         </div>
 
         <nav className="zoho-admin__nav">

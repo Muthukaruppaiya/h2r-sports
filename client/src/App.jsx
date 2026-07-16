@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
-import { Routes, Route, useLocation, Link } from 'react-router-dom';
-import AnnouncementBar from './components/AnnouncementBar';
-import Navbar from './components/Navbar';
+import { Routes, Route, useLocation, Link, useSearchParams } from 'react-router-dom';
+import AnnouncementBar from './components/AnnouncementBar';import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import CartToast from './components/CartToast';
 import WatchBuyVideo from './components/WatchBuyVideo';
@@ -53,7 +52,9 @@ function PageShell({ children }) {
 
 export default function App() {
   const { pathname } = useLocation();
+  const [searchParams] = useSearchParams();
   const isAdmin = pathname.startsWith('/admin');
+  const isAdminLogin = pathname === '/login' && searchParams.get('redirect') === 'admin';
   const isProductDetail = /^\/shop\/[^/]+/.test(pathname);
   const hideVideo =
     pathname.startsWith('/checkout') ||
@@ -65,11 +66,28 @@ export default function App() {
   if (isAdmin) {
     const user = JSON.parse(localStorage.getItem('h2r_user') || '{}');
     if (user.role !== 'admin') {
-      return <div style={{ padding: '4rem', textAlign: 'center' }}>
-        <h2>Access Denied</h2>
-        <p>You must be logged in as an admin to view this page.</p>
-        <Link to="/login" style={{ color: 'var(--accent)' }}>Go to Login</Link>
-      </div>;
+      return (
+        <div className="auth-page auth-page--denied">
+          <div className="auth-page__card">
+            <div className="auth-page__brand">
+              <div className="auth-page__logo">H2R</div>
+              <div>
+                <p className="auth-page__eyebrow">Admin panel</p>
+                <h1 className="auth-page__title">Access denied</h1>
+              </div>
+            </div>
+            <p className="auth-page__lead">
+              You must be logged in as an admin to view this page.
+            </p>
+            <Link to="/login?redirect=admin" className="btn btn-primary auth-page__submit">
+              Admin log in
+            </Link>
+            <p className="auth-page__footer">
+              <Link to="/">← Back to store</Link>
+            </p>
+          </div>
+        </div>
+      );
     }
     
     return (
@@ -83,6 +101,14 @@ export default function App() {
           <Route path="marketing" element={<AdminMarketing />} />
           <Route path="integrations" element={<AdminIntegrations />} />
         </Route>
+      </Routes>
+    );
+  }
+
+  if (isAdminLogin) {
+    return (
+      <Routes>
+        <Route path="/login" element={<Login />} />
       </Routes>
     );
   }
