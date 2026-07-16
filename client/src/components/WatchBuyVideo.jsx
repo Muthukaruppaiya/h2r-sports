@@ -1,99 +1,324 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+
+const API_ORIGIN = 'http://localhost:5000';
+const DRAG_THRESHOLD = 8;
+const STORAGE_KEY = 'h2r_watchbuy_dismissed';
+
+function resolveMediaUrl(url) {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  // Prefer same-origin (Vite public) so autoplay is reliable in dev
+  return url.startsWith('/') ? url : `/${url}`;
+}
+
+function defaultPosition() {
+  const w = typeof window !== 'undefined' ? window.innerWidth : 400;
+  const h = typeof window !== 'undefined' ? window.innerHeight : 800;
+  return {
+    x: Math.max(12, w - 124),
+    y: Math.max(100, h - 220),
+  };
+}
+
+function tryPlay(el) {
+  if (!el) return;
+  el.muted = true;
+  el.defaultMuted = true;
+  el.setAttribute('muted', '');
+  el.playsInline = true;
+  el.setAttribute('playsinline', '');
+  el.setAttribute('webkit-playsinline', '');
+  const p = el.play();
+  if (p?.catch) p.catch(() => {});
+}
 
 /**
- * Collapsed circular bubble by default — expands to video on tap.
- * Close (X) dismisses the player back to the bubble.
+ * Draggable mini autoplay video.
+ * Click = expand. Buy Now = product page (video hidden on details).
  */
 export default function WatchBuyVideo({
-  productPath = '/shop/thala-hard',
-  productName = 'Thala Edition Hard Tennis Bat',
+  productPath = '/shop',
+  productName = 'Shop now',
 }) {
-  const videoRef = useRef(null);
-  const [open, setOpen] = useState(false);
-  const [muted, setMuted] = useState(true);
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const miniRef = useRef(null);
+  const fullRef = useRef(null);
+  const shellRef = useRef(null);
+  const dragRef = useRef({
+    active: false,
+    moved: false,
+    startX: 0,
+    startY: 0,
+    originX: 0,
+    originY: 0,
+    pointerId: null,
+  });
 
-  useEffect(() => {
-    const el = videoRef.current;
-    if (!el || !open) return;
-    el.muted = true;
-    setMuted(true);
-    const play = el.play();
-    if (play?.catch) play.catch(() => {});
-  }, [open]);
+  const [videos, setVideos] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [videoIndex, setVideoIndex] = useState(0);
+  const [pos, setPos] = useState(defaultPosition);
+  const [dragging, setDragging] = useState(false);
 
+  const currentVideo = videos[videoIndex];
+  const src = resolveMediaUrl(currentVideo?.videoUrl);
+  const fallbackSrc = currentVideo?.videoUrl
+    ? `${API_ORIGIN}${currentVideo.videoUrl.startsWith('/') ? '' : '/'}${currentVideo.videoUrl}`
+    : '';
+  const buyPath = currentVideo?.productPath || productPath;
+  const buyName = currentVideo?.productName || productName;
+
+  // Restore floating video on browse pages; keep cancelled after explicit close
   useEffect(() => {
-    if (open) return undefined;
-    const el = videoRef.current;
-    if (el) {
-      el.pause();
+    const isBrowse =
+      pathname === '/' ||
+      pathname === '/shop' ||
+      pathname.startsWith('/collections');
+    if (isBrowse) {
+      sessionStorage.removeItem(STORAGE_KEY);
+      setDismissed(false);
+    } else if (sessionStorage.getItem(STORAGE_KEY) === '1') {
+      setDismissed(true);
+      setExpanded(false);
     }
-    return undefined;
-  }, [open]);
+  }, [pathname]);
 
-  if (!open) {
-    return (
-      <button
-        type="button"
-        className="watchbuy-bubble"
-        onClick={() => setOpen(true)}
-        aria-label="Open Watch & Buy video"
-      >
-        <span className="watchbuy-bubble__icon" aria-hidden="true">
-          ▶
-        </span>
-      </button>
-    );
-  }
+  const cancelFloatingVideo = () => {
+    setExpanded(false);
+    setDismissed(true);
+    sessionStorage.setItem(STORAGE_KEY, '1');
+    miniRef.current?.pause();
+    fullRef.current?.pause();
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchConfig = async () => {
+      try {
+        const res = await fetch(`${API_ORIGIN}/api/marketing/public`);
+        const data = await res.json();
+        if (!mounted) return;
+        const list = (data.floatingVideos || []).filter((v) => v.videoUrl);
+        setVideos(list);
+      } catch (_err) {
+        if (!mounted) return;
+        setVideos([]);
+      } finally {
+        if (mounted) setLoaded(true);
+      }
+    };
+    fetchConfig();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (dismissed || !src) return undefined;
+    const el = expanded ? fullRef.current : miniRef.current;
+    tryPlay(el);
+
+    const onReady = () => tryPlay(el);
+    el?.addEventListener('loadeddata', onReady);
+    el?.addEventListener('canplay', onReady);
+
+    // Retry shortly after mount (mobile browsers)
+    const t1 = setTimeout(() => tryPlay(el), 150);
+    const t2 = setTimeout(() => tryPlay(el), 600);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      el?.removeEventListener('loadeddata', onReady);
+      el?.removeEventListener('canplay', onReady);
+    };
+  }, [src, videoIndex, expanded, dismissed]);
+
+  useEffect(() => {
+    if (expanded || dismissed || videos.length <= 1) return undefined;
+    const interval = setInterval(() => {
+      setVideoIndex((prev) => (prev + 1) % videos.length);
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [videos.length, expanded, dismissed]);
+
+  useEffect(() => {
+    if (!expanded) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setExpanded(false);
+    };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [expanded]);
+
+  const clampPos = (x, y) => {
+    const el = shellRef.current;
+    const width = el?.offsetWidth || 112;
+    const height = el?.offsetHeight || 180;
+    const maxX = window.innerWidth - width - 8;
+    const maxY = window.innerHeight - height - 8;
+    return {
+      x: Math.min(Math.max(8, x), Math.max(8, maxX)),
+      y: Math.min(Math.max(8, y), Math.max(8, maxY)),
+    };
+  };
+
+  const onPointerDown = (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    if (e.target.closest('.watchbuy__close')) return;
+    const d = dragRef.current;
+    d.active = true;
+    d.moved = false;
+    d.startX = e.clientX;
+    d.startY = e.clientY;
+    d.originX = pos.x;
+    d.originY = pos.y;
+    d.pointerId = e.pointerId;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+
+  const onPointerMove = (e) => {
+    const d = dragRef.current;
+    if (!d.active) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (!d.moved && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) {
+      d.moved = true;
+      setDragging(true);
+    }
+    if (!d.moved) return;
+    setPos(clampPos(d.originX + dx, d.originY + dy));
+  };
+
+  const endPointer = (e) => {
+    const d = dragRef.current;
+    if (!d.active) return;
+    const wasDrag = d.moved;
+    d.active = false;
+    setDragging(false);
+    try {
+      e.currentTarget.releasePointerCapture?.(d.pointerId);
+    } catch (_err) {
+      /* ignore */
+    }
+    if (!wasDrag) setExpanded(true);
+  };
+
+  const handleBuyNow = () => {
+    cancelFloatingVideo();
+    navigate(buyPath);
+  };
+
+  if (!loaded || dismissed || videos.length === 0 || !src) return null;
 
   return (
-    <aside className="watchbuy" aria-label="Watch and buy">
-      <button
-        type="button"
-        className="watchbuy__close"
-        onClick={() => setOpen(false)}
-        aria-label="Close video"
-      >
-        ✕
-      </button>
-
-      <div className="watchbuy__media">
-        <video
-          ref={videoRef}
-          className="watchbuy__video"
-          autoPlay
-          muted={muted}
-          loop
-          playsInline
-          preload="metadata"
-          poster="/hero/banner.jpg"
+    <>
+      {!expanded && (
+        <aside
+          ref={shellRef}
+          className={`watchbuy watchbuy--mini${dragging ? ' is-dragging' : ''}`}
+          aria-label="Watch and buy"
+          style={{ left: pos.x, top: pos.y, right: 'auto', bottom: 'auto' }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endPointer}
+          onPointerCancel={endPointer}
         >
-          <source
-            src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
-            type="video/mp4"
-          />
-        </video>
+          <button
+            type="button"
+            className="watchbuy__close"
+            onClick={(e) => {
+              e.stopPropagation();
+              cancelFloatingVideo();
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            aria-label="Close video"
+          >
+            ✕
+          </button>
 
-        <button
-          type="button"
-          className="watchbuy__mute"
-          onClick={() => {
-            const next = !muted;
-            setMuted(next);
-            if (videoRef.current) {
-              videoRef.current.muted = next;
-              videoRef.current.play().catch(() => {});
-            }
-          }}
-        >
-          {muted ? 'Unmute' : 'Mute'}
-        </button>
-      </div>
+          <div className="watchbuy__expand-hit" role="button" tabIndex={0} aria-label="Open full size video">
+            <div className="watchbuy__media watchbuy__media--mini">
+              <video
+                key={`mini-${src}`}
+                ref={miniRef}
+                className="watchbuy__video"
+                src={src}
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="auto"
+                draggable={false}
+                onLoadedData={(e) => tryPlay(e.currentTarget)}
+                onCanPlay={(e) => tryPlay(e.currentTarget)}
+                onError={(e) => {
+                  // Fallback to API host if Vite public miss
+                  if (fallbackSrc && e.currentTarget.src !== fallbackSrc) {
+                    e.currentTarget.src = fallbackSrc;
+                    tryPlay(e.currentTarget);
+                  }
+                }}
+              />
+            </div>
+            <span className="watchbuy__tap-hint">Drag or tap</span>
+          </div>
+        </aside>
+      )}
 
-      <Link to={productPath} className="watchbuy__cta" onClick={() => setOpen(false)}>
-        Watch &amp; Buy
-        <span>{productName}</span>
-      </Link>
-    </aside>
+      {expanded && (
+        <div className="watchbuy-full" role="dialog" aria-modal="true" aria-label="Full size video">
+          <div className="watchbuy-full__backdrop" onClick={() => setExpanded(false)} />
+          <div className="watchbuy-full__panel">
+            <button
+              type="button"
+              className="watchbuy-full__close"
+              onClick={() => setExpanded(false)}
+              aria-label="Close full video"
+            >
+              ✕
+            </button>
+
+            <div className="watchbuy-full__media">
+              <video
+                key={`full-${src}`}
+                ref={fullRef}
+                className="watchbuy-full__video"
+                src={src}
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="auto"
+                controls
+                onLoadedData={(e) => tryPlay(e.currentTarget)}
+                onCanPlay={(e) => tryPlay(e.currentTarget)}
+                onError={(e) => {
+                  if (fallbackSrc && e.currentTarget.src !== fallbackSrc) {
+                    e.currentTarget.src = fallbackSrc;
+                    tryPlay(e.currentTarget);
+                  }
+                }}
+              />
+            </div>
+
+            <div className="watchbuy-full__footer">
+              <p className="watchbuy-full__product">{buyName}</p>
+              <button type="button" className="watchbuy-full__buy" onClick={handleBuyNow}>
+                Buy Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

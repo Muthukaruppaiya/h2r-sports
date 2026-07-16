@@ -47,6 +47,7 @@ const PRODUCTS = [
     ],
     description: 'Hard tennis power bat with aggressive profile — bestseller balance for gully and club tennis-ball cricket.',
     features: ['All India free shipping', 'COD available', '6 months bat warranty', 'Free cover on prepaid*'],
+    images: ['/batimages/bat1.webp', '/batimages/bat2.webp', '/batimages/bat3.jpg', '/batimages/bat4.jpg']
   },
   {
     id: 'rhino-advance',
@@ -62,6 +63,7 @@ const PRODUCTS = [
     ],
     description: 'Advance scoop profile with serious sweet-spot punch — a customer favourite for hard tennis ball.',
     features: ['All India free shipping', 'COD available', '6 months bat warranty', 'Pre-oiled & pressed'],
+    images: ['/batimages/bat2.webp']
   },
   {
     id: 'viper-hard',
@@ -77,6 +79,7 @@ const PRODUCTS = [
     ],
     description: 'Premium hard tennis edition with elite finish and pick-up for power hitters.',
     features: ['Free engraving on prepaid*', '6 months warranty', 'COD available', 'Pan-India delivery'],
+    images: ['/batimages/bat3.jpg']
   },
   {
     id: 'wolverine-hard',
@@ -92,6 +95,7 @@ const PRODUCTS = [
     ],
     description: 'Sharp pickup hard tennis bat — everyday net and match companion.',
     features: ['COD available', 'All India shipping', '6 months warranty'],
+    images: ['/batimages/bat4.jpg']
   },
   {
     id: 'wolverine-gold',
@@ -107,6 +111,7 @@ const PRODUCTS = [
     ],
     description: 'Gold edition styling with Wolverine balance and punch.',
     features: ['COD available', 'Free cover on prepaid*', '6 months warranty'],
+    images: ['/batimages/bat5.jpg']
   },
   {
     id: 'ghost-hard',
@@ -122,6 +127,7 @@ const PRODUCTS = [
     ],
     description: 'Aggressive hard tennis profile built for big hitting.',
     features: ['6 months warranty', 'COD available', 'Pan-India delivery'],
+    images: ['/batimages/bat6.webp']
   },
   {
     id: 'ghost-soft',
@@ -137,6 +143,7 @@ const PRODUCTS = [
     ],
     description: 'Soft tennis edition tuned for timing and soft-ball bounce.',
     features: ['COD available', '6 months warranty', 'All India shipping'],
+    images: ['/batimages/bat7.jpg']
   },
   {
     id: 'thala-rhino-soft',
@@ -152,6 +159,7 @@ const PRODUCTS = [
     ],
     description: 'Precision soft tennis bat — light hands, clean middle.',
     features: ['Free gloves offer*', 'COD available', '6 months warranty'],
+    images: ['/batimages/bat8.jpg']
   },
   {
     id: 'players-english',
@@ -168,6 +176,7 @@ const PRODUCTS = [
     ],
     description: 'Match-ready English willow season bat — pressed, oiled, and sized for Indian leather-ball cricket.',
     features: ['All India free shipping', '6 months warranty', 'COD available', 'GST included'],
+    images: ['/batimages/bat9.jpg']
   },
   {
     id: 'beast-english',
@@ -183,6 +192,7 @@ const PRODUCTS = [
     ],
     description: 'Beast profile English willow for serious season cricket.',
     features: ['Free engraving on prepaid*', '6 months warranty', 'Pan-India delivery'],
+    images: ['/batimages/bat10.jpg']
   },
   {
     id: 'kashmir-players',
@@ -199,6 +209,7 @@ const PRODUCTS = [
     ],
     description: 'Top-grade Kashmir willow player edition for leather-ball season cricket.',
     features: ['COD available', '6 months warranty', 'GST included'],
+    images: ['/batimages/bat1.webp']
   },
   {
     id: 'kids-season',
@@ -216,6 +227,7 @@ const PRODUCTS = [
     ],
     description: 'Junior season bat sized for school and academy leather-ball cricket.',
     features: ['COD available', 'School kit ready', '6 months warranty'],
+    images: ['/batimages/bat2.webp']
   },
 ];
 
@@ -248,13 +260,9 @@ async function seed() {
   }
 
   // Products
-  const prodCount = await Product.countDocuments();
-  if (prodCount === 0) {
-    await Product.insertMany(PRODUCTS);
-    console.log(`✓ Seeded ${PRODUCTS.length} products`);
-  } else {
-    console.log(`  Products already seeded (${prodCount} found) — skipping`);
-  }
+  await Product.deleteMany({});
+  await Product.insertMany(PRODUCTS);
+  console.log(`✓ Re-seeded ${PRODUCTS.length} products with images`);
 
   // Reviews
   const revCount = await Review.countDocuments();

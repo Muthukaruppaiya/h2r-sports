@@ -5,6 +5,7 @@ import api from '../api/client';
 export default function Register() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -18,7 +19,7 @@ export default function Register() {
     setError('');
 
     try {
-      const res = await api.post('/auth/register', { name, email, password });
+      const res = await api.post('/auth/register', { name, email, phone, password });
       localStorage.setItem('h2r_token', res.data.token);
       localStorage.setItem('h2r_user', JSON.stringify(res.data));
 
@@ -71,6 +72,18 @@ export default function Register() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            style={{ width: '100%', padding: '0.8rem', border: '1px solid var(--gray-200)', borderRadius: '8px' }}
+          />
+        </div>
+
+        <div>
+          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>Mobile Number</label>
+          <input
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            required
+            placeholder="e.g. 9876543210"
             style={{ width: '100%', padding: '0.8rem', border: '1px solid var(--gray-200)', borderRadius: '8px' }}
           />
         </div>

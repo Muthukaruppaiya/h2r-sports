@@ -1,9 +1,9 @@
 const BASE_URL = 'http://localhost:5000/api';
 
-function getHeaders() {
+function getHeaders(isFormData = false) {
   const token = localStorage.getItem('h2r_token');
   return {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(token ? { Authorization: `Bearer ${token}` } : {})
   };
 }
@@ -18,13 +18,19 @@ const client = {
   },
   
   async post(endpoint, data) {
+    const isFormData = data instanceof FormData;
     const res = await fetch(`${BASE_URL}${endpoint}`, {
       method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(data)
+      headers: getHeaders(isFormData),
+      body: isFormData ? data : JSON.stringify(data)
     });
-    if (!res.ok) throw new Error(`POST ${endpoint} failed`);
-    return { data: await res.json() };
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(body.error || `POST ${endpoint} failed`);
+      err.response = { data: body, status: res.status };
+      throw err;
+    }
+    return { data: body };
   },
   
   async put(endpoint, data) {
@@ -33,8 +39,13 @@ const client = {
       headers: getHeaders(),
       body: JSON.stringify(data)
     });
-    if (!res.ok) throw new Error(`PUT ${endpoint} failed`);
-    return { data: await res.json() };
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(body.error || `PUT ${endpoint} failed`);
+      err.response = { data: body, status: res.status };
+      throw err;
+    }
+    return { data: body };
   }
 };
 

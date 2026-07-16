@@ -5,6 +5,7 @@ import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import CartToast from './components/CartToast';
 import WatchBuyVideo from './components/WatchBuyVideo';
+import WhatsAppStatusBar from './components/WhatsAppStatusBar';
 import Home from './pages/Home';
 import Shop from './pages/Shop';
 import Collection from './pages/Collection';
@@ -23,14 +24,19 @@ import AdminDashboard from './pages/admin/Dashboard';
 import AdminOrders from './pages/admin/Orders';
 import AdminInventory from './pages/admin/Inventory';
 import AdminCustomers from './pages/admin/Customers';
+import AdminReports from './pages/admin/Reports';
+import AdminIntegrations from './pages/admin/Integrations';
+import AdminMarketing from './pages/admin/Marketing';
 
 function ScrollLock() {
   const { pathname } = useLocation();
 
   useEffect(() => {
-    window.scrollTo(0, 0);
-    document.documentElement.scrollLeft = 0;
-    document.body.scrollLeft = 0;
+    setTimeout(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    }, 0);
   }, [pathname]);
 
   return null;
@@ -48,10 +54,12 @@ function PageShell({ children }) {
 export default function App() {
   const { pathname } = useLocation();
   const isAdmin = pathname.startsWith('/admin');
+  const isProductDetail = /^\/shop\/[^/]+/.test(pathname);
   const hideVideo =
     pathname.startsWith('/checkout') ||
     pathname.startsWith('/order') ||
     pathname.startsWith('/cart') ||
+    isProductDetail ||
     isAdmin;
 
   if (isAdmin) {
@@ -71,6 +79,9 @@ export default function App() {
           <Route path="orders" element={<AdminOrders />} />
           <Route path="inventory" element={<AdminInventory />} />
           <Route path="customers" element={<AdminCustomers />} />
+          <Route path="reports" element={<AdminReports />} />
+          <Route path="marketing" element={<AdminMarketing />} />
+          <Route path="integrations" element={<AdminIntegrations />} />
         </Route>
       </Routes>
     );
@@ -80,6 +91,7 @@ export default function App() {
     <>
       <ScrollLock />
       <AnnouncementBar />
+      <WhatsAppStatusBar />
       <Navbar />
       <CartToast />
       <PageShell>

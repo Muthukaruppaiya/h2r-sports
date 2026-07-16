@@ -11,6 +11,9 @@ import Product from './models/Product.js';
 import Order from './models/Order.js';
 import Review from './models/Review.js';
 import User from './models/User.js';
+import MarketingSettings from './models/MarketingSettings.js';
+import { buildStatusUpdate, isValidStatus } from './utils/orderStatus.js';
+import { parseInstagramUrl } from './utils/instagram.js';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
 
@@ -21,6 +24,8 @@ const ROOT         = path.join(__dirname, '..');
 const FRAMES_DIR   = path.join(ROOT, 'FRAMES');
 const CLIENT_DIST  = path.join(ROOT, 'client', 'dist');
 const PRODUCTS_IMG_DIR = path.join(ROOT, 'client', 'public', 'products');
+const MARKETING_DIR = path.join(ROOT, 'client', 'public', 'marketing');
+const MARKETING_VIDEOS_DIR = path.join(MARKETING_DIR, 'videos');
 
 const PORT      = process.env.PORT      || 5000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/h2r-sports';
@@ -77,11 +82,56 @@ const uploadStorage = multer.diskStorage({
 });
 const upload = multer({ storage: uploadStorage });
 
+const videoUploadStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    if (!fs.existsSync(MARKETING_VIDEOS_DIR)) fs.mkdirSync(MARKETING_VIDEOS_DIR, { recursive: true });
+    cb(null, MARKETING_VIDEOS_DIR);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase() || '.mp4';
+    cb(null, `video-${Date.now()}-${Math.round(Math.random() * 1E9)}${ext}`);
+  },
+});
+
+const videoUpload = multer({
+  storage: videoUploadStorage,
+  limits: { fileSize: 80 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok = file.mimetype.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(file.originalname);
+    cb(ok ? null : new Error('Only video files (mp4, webm, mov) are allowed'), ok);
+  },
+});
+
 // ─── Order ID generator ───────────────────────────────────────────────────────
 function makeOrderId() {
   const n = Date.now().toString(36).toUpperCase();
   const r = Math.random().toString(36).slice(2, 6).toUpperCase();
   return `H2R-${n}-${r}`;
+}
+
+function toYmd(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function safePercent(part, total) {
+  if (!total) return 0;
+  return Number(((part / total) * 100).toFixed(1));
+}
+
+function formatFloatingVideo(entry) {
+  const videoUrl = String(entry.videoUrl || '').trim();
+  if (!videoUrl) return null;
+  const parsed = entry.instagramUrl ? parseInstagramUrl(entry.instagramUrl) : null;
+  return {
+    id: entry.id,
+    title: entry.title,
+    videoUrl,
+    instagramUrl: parsed?.permalink || entry.instagramUrl || '',
+    productPath: entry.productPath || '/shop',
+    productName: entry.productName || 'Shop now',
+    active: entry.active !== false,
+    sortOrder: entry.sortOrder || 0,
+  };
 }
 
 // ─── Frames helper ────────────────────────────────────────────────────────────
@@ -127,10 +177,10 @@ const admin = (req, res, next) => {
 // ─── Auth Routes ──────────────────────────────────────────────────────────────
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, phone } = req.body;
     const userExists = await User.findOne({ email });
     if (userExists) return res.status(400).json({ error: 'User already exists' });
-    const user = await User.create({ name, email, password });
+    const user = await User.create({ name, email, password, phone });
     const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '30d' });
     res.status(201).json({ _id: user._id, name: user.name, email: user.email, role: user.role, token });
   } catch (err) {
@@ -334,10 +384,24 @@ app.post('/api/orders', async (req, res) => {
     const shippingFee = 0;
     const total = subtotal + shippingFee;
 
+    const initialStatus = paymentMethod === 'cod' ? 'confirmed' : 'paid';
+    const now = new Date();
+    const initialTimestamps = {
+      confirmedAt: now,
+      ...(paymentMethod !== 'cod' ? { paidAt: now } : {}),
+    };
+
     const order = await Order.create({
       orderId: makeOrderId(),
-      status:        paymentMethod === 'cod' ? 'confirmed' : 'paid',
+      status:        initialStatus,
       paymentStatus: paymentMethod === 'cod' ? 'pending_cod' : 'paid',
+      statusTimestamps: initialTimestamps,
+      statusHistory: [{
+        to: initialStatus,
+        changedAt: now,
+        changedBy: 'System',
+        note: 'Order placed',
+      }],
       paymentMethod,
       paymentMeta:
         paymentMethod === 'upi'
@@ -399,14 +463,276 @@ app.get('/api/admin/orders', protect, admin, async (req, res) => {
 
 app.put('/api/admin/orders/:id/status', protect, admin, async (req, res) => {
   try {
-    const { status } = req.body;
-    const order = await Order.findOneAndUpdate(
-      { orderId: req.params.id },
-      { status },
-      { new: true }
+    const { status, note } = req.body;
+    if (!isValidStatus(status)) {
+      return res.status(400).json({ error: 'Invalid order status' });
+    }
+
+    const currentOrder = await Order.findOne({ orderId: req.params.id });
+    if (!currentOrder) return res.status(404).json({ error: 'Order not found' });
+
+    if (currentOrder.status === status) {
+      return res.json({ ok: true, order: currentOrder.toObject() });
+    }
+
+    const result = buildStatusUpdate(currentOrder.toObject(), status, req.user?.name || 'Admin');
+    if (result.error) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    const { updates } = result;
+    const historyEntry = {
+      from: currentOrder.status,
+      to: status,
+      changedAt: new Date(),
+      changedBy: req.user?.name || 'Admin',
+      ...(note ? { note } : {}),
+    };
+
+    currentOrder.status = status;
+    currentOrder.statusTimestamps = updates.statusTimestamps;
+    if (updates.paymentStatus) currentOrder.paymentStatus = updates.paymentStatus;
+    currentOrder.statusHistory.push(historyEntry);
+    await currentOrder.save();
+
+    res.json({ ok: true, order: currentOrder.toObject() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/marketing/public', async (_req, res) => {
+  try {
+    let settings = await MarketingSettings.findOne({ key: 'default' }).lean();
+    if (!settings) {
+      settings = await MarketingSettings.create({
+        key: 'default',
+        floatingVideos: [],
+        whatsappStatuses: [
+          {
+            id: 'default-status-1',
+            text: 'New arrivals live now',
+            ctaText: 'View now',
+            prefillMessage: 'Hi H2R Sports! Please share new arrivals.',
+            active: true,
+            sortOrder: 1,
+          },
+          {
+            id: 'default-status-2',
+            text: 'Free shipping all over India',
+            ctaText: 'Order on WhatsApp',
+            prefillMessage: 'Hi H2R Sports! I want to order via WhatsApp.',
+            active: true,
+            sortOrder: 2,
+          },
+        ],
+      });
+      settings = settings.toObject();
+    }
+
+    const floatingVideos = (settings.floatingVideos || [])
+      .filter((v) => v.active !== false)
+      .map(formatFloatingVideo)
+      .filter(Boolean)
+      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+    const whatsappStatuses = (settings.whatsappStatuses || [])
+      .filter((s) => s.active)
+      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+
+    res.json({ floatingVideos, whatsappStatuses });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/marketing', protect, admin, async (_req, res) => {
+  try {
+    let settings = await MarketingSettings.findOne({ key: 'default' });
+    if (!settings) {
+      settings = await MarketingSettings.create({ key: 'default' });
+    }
+    res.json({ settings: settings.toObject() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/marketing/upload-video', protect, admin, (req, res) => {
+  videoUpload.single('video')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message || 'Video upload failed' });
+    if (!req.file) return res.status(400).json({ error: 'No video file selected' });
+    res.json({ ok: true, url: `/marketing/videos/${req.file.filename}` });
+  });
+});
+
+app.put('/api/admin/marketing', protect, admin, async (req, res) => {
+  try {
+    const floatingVideos = Array.isArray(req.body.floatingVideos) ? req.body.floatingVideos : [];
+    const whatsappStatuses = Array.isArray(req.body.whatsappStatuses) ? req.body.whatsappStatuses : [];
+
+    const sanitizedVideos = [];
+    for (const [idx, v] of floatingVideos.entries()) {
+      const videoUrl = String(v.videoUrl || '').trim();
+      const title = String(v.title || '').trim();
+      if (!videoUrl && !title) continue;
+      if (!videoUrl) {
+        return res.status(400).json({
+          error: `Upload a video file for "${title || `video ${idx + 1}`}" (required for autoplay).`,
+        });
+      }
+      let instagramUrl = '';
+      if (v.instagramUrl) {
+        const parsed = parseInstagramUrl(v.instagramUrl);
+        if (!parsed) {
+          return res.status(400).json({
+            error: `Invalid Instagram URL for "${title || `video ${idx + 1}`}".`,
+          });
+        }
+        instagramUrl = parsed.permalink;
+      }
+      sanitizedVideos.push({
+        id: v.id || `video-${Date.now()}-${idx}`,
+        title: title || 'Marketing Video',
+        videoUrl,
+        instagramUrl,
+        productPath: String(v.productPath || '/shop').trim(),
+        productName: String(v.productName || 'Shop now').trim(),
+        active: v.active !== false,
+        sortOrder: Number(v.sortOrder) || idx + 1,
+      });
+    }
+
+    const sanitizedStatuses = whatsappStatuses.map((s, idx) => ({
+      id: s.id || `status-${Date.now()}-${idx}`,
+      text: String(s.text || '').trim(),
+      ctaText: String(s.ctaText || 'Message us').trim(),
+      prefillMessage: String(s.prefillMessage || '').trim(),
+      active: s.active !== false,
+      sortOrder: Number(s.sortOrder) || idx + 1,
+    })).filter((s) => s.text);
+
+    const updated = await MarketingSettings.findOneAndUpdate(
+      { key: 'default' },
+      { floatingVideos: sanitizedVideos, whatsappStatuses: sanitizedStatuses },
+      { new: true, upsert: true }
     ).lean();
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-    res.json({ ok: true, order });
+
+    res.json({ ok: true, settings: updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/reports/overview', protect, admin, async (req, res) => {
+  try {
+    const requestedDays = Number(req.query.days) || 30;
+    const days = Math.min(Math.max(requestedDays, 7), 180);
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    const start = new Date(end);
+    start.setDate(start.getDate() - (days - 1));
+    start.setHours(0, 0, 0, 0);
+
+    const orders = await Order.find({ createdAt: { $gte: start, $lte: end } })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    const totalOrders = orders.length;
+    const totalRevenue = orders.reduce((sum, order) => sum + (order.total || 0), 0);
+    const deliveredOrders = orders.filter((o) => o.status === 'delivered').length;
+    const cancelledOrders = orders.filter((o) => o.status === 'cancelled').length;
+    const paidOrders = orders.filter((o) => o.paymentStatus === 'paid').length;
+    const codOrders = orders.filter((o) => o.paymentMethod === 'cod').length;
+    const prepaidOrders = orders.filter((o) => o.paymentMethod !== 'cod').length;
+    const avgOrderValue = totalOrders ? Math.round(totalRevenue / totalOrders) : 0;
+
+    const statusBreakdown = ['confirmed', 'paid', 'shipped', 'delivered', 'cancelled'].map((status) => {
+      const count = orders.filter((o) => o.status === status).length;
+      return { status, count, pct: safePercent(count, totalOrders) };
+    });
+
+    const paymentBreakdown = ['cod', 'upi', 'card'].map((method) => {
+      const count = orders.filter((o) => o.paymentMethod === method).length;
+      return { method, count, pct: safePercent(count, totalOrders) };
+    });
+
+    const dailyMap = new Map();
+    for (let i = 0; i < days; i += 1) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      dailyMap.set(toYmd(d), { date: toYmd(d), orders: 0, revenue: 0, delivered: 0, cancelled: 0 });
+    }
+
+    for (const order of orders) {
+      const key = toYmd(new Date(order.createdAt));
+      const bucket = dailyMap.get(key);
+      if (!bucket) continue;
+      bucket.orders += 1;
+      bucket.revenue += order.total || 0;
+      if (order.status === 'delivered') bucket.delivered += 1;
+      if (order.status === 'cancelled') bucket.cancelled += 1;
+    }
+
+    const dailyTrend = Array.from(dailyMap.values());
+
+    const productMap = new Map();
+    for (const order of orders) {
+      for (const item of order.items || []) {
+        const current = productMap.get(item.id) || {
+          id: item.id,
+          name: item.name,
+          units: 0,
+          revenue: 0,
+          orders: 0,
+        };
+        current.units += Number(item.qty) || 0;
+        current.revenue += Number(item.lineTotal) || 0;
+        current.orders += 1;
+        productMap.set(item.id, current);
+      }
+    }
+    const topProducts = Array.from(productMap.values())
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 8);
+
+    const customerMap = new Map();
+    for (const order of orders) {
+      const email = order.customer?.email || 'unknown';
+      const current = customerMap.get(email) || {
+        email,
+        name: order.customer?.name || 'Customer',
+        orders: 0,
+        spend: 0,
+      };
+      current.orders += 1;
+      current.spend += order.total || 0;
+      customerMap.set(email, current);
+    }
+    const topCustomers = Array.from(customerMap.values())
+      .sort((a, b) => b.spend - a.spend)
+      .slice(0, 5);
+
+    res.json({
+      range: { days, start, end },
+      kpis: {
+        totalOrders,
+        totalRevenue,
+        avgOrderValue,
+        deliveredOrders,
+        cancelledOrders,
+        paidOrders,
+        fulfillmentRate: safePercent(deliveredOrders, totalOrders),
+        cancellationRate: safePercent(cancelledOrders, totalOrders),
+        paymentSuccessRate: safePercent(paidOrders, totalOrders),
+        codShare: safePercent(codOrders, totalOrders),
+        prepaidShare: safePercent(prepaidOrders, totalOrders),
+      },
+      statusBreakdown,
+      paymentBreakdown,
+      dailyTrend,
+      topProducts,
+      topCustomers,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -511,11 +837,12 @@ app.put('/api/admin/customers/:email', protect, admin, async (req, res) => {
 
 // ─── Static assets ────────────────────────────────────────────────────────────
 app.use('/frames', express.static(FRAMES_DIR, { maxAge: '1d', fallthrough: false }));
+app.use('/marketing', express.static(MARKETING_DIR, { maxAge: '1d' }));
 
 if (fs.existsSync(CLIENT_DIST)) {
   app.use(express.static(CLIENT_DIST));
   app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api') || req.path.startsWith('/frames')) return next();
+    if (req.path.startsWith('/api') || req.path.startsWith('/frames') || req.path.startsWith('/marketing')) return next();
     res.sendFile(path.join(CLIENT_DIST, 'index.html'));
   });
 }
@@ -523,6 +850,9 @@ if (fs.existsSync(CLIENT_DIST)) {
 // ─── Start ────────────────────────────────────────────────────────────────────
 async function start() {
   try {
+    if (!fs.existsSync(MARKETING_VIDEOS_DIR)) {
+      fs.mkdirSync(MARKETING_VIDEOS_DIR, { recursive: true });
+    }
     await mongoose.connect(MONGO_URI);
     console.log(`✓ MongoDB connected → ${MONGO_URI}`);
 

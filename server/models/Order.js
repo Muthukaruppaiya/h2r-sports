@@ -54,6 +54,20 @@ const OrderSchema = new mongoose.Schema(
     subtotal:    { type: Number, required: true },
     shippingFee: { type: Number, default: 0 },
     total:       { type: Number, required: true },
+    statusTimestamps: {
+      confirmedAt: { type: Date },
+      paidAt:      { type: Date },
+      shippedAt:   { type: Date },
+      deliveredAt: { type: Date },
+      cancelledAt: { type: Date },
+    },
+    statusHistory: [{
+      from:      { type: String },
+      to:        { type: String, required: true },
+      changedAt: { type: Date, default: Date.now },
+      changedBy: { type: String, default: 'System' },
+      note:      { type: String },
+    }],
   },
   { timestamps: true }
 );

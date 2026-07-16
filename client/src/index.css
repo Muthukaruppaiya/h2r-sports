@@ -18,7 +18,9 @@
   --font: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --announce-h: 36px;
   --nav-height: 68px;
-  --header-offset: calc(var(--announce-h) + var(--nav-height));
+  /* 0 until WhatsApp statuses load — prevents hero/banner clipping under navbar */
+  --wa-status-h: 0px;
+  --header-offset: calc(var(--announce-h) + var(--wa-status-h) + var(--nav-height));
   --radius: 12px;
   --radius-pill: 999px;
   --shadow: 0 10px 30px rgba(10, 37, 64, 0.1);
@@ -166,7 +168,7 @@ button, input, select { font: inherit; }
 /* Navbar */
 .navbar {
   position: fixed;
-  top: var(--announce-h);
+  top: calc(var(--announce-h) + var(--wa-status-h));
   left: 0;
   right: 0;
   z-index: 1000;
@@ -406,6 +408,65 @@ button, input, select { font: inherit; }
 /* Home banner */
 .home-shop { padding-top: var(--header-offset); }
 
+.wa-status-strip {
+  position: fixed;
+  top: var(--announce-h);
+  left: 0;
+  right: 0;
+  z-index: 1050;
+  height: var(--wa-status-h);
+  border-bottom: 1px solid #e2e8f0;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+html.has-wa-status {
+  --wa-status-h: 52px;
+}
+
+.wa-status-strip__inner {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.wa-status-strip__inner::-webkit-scrollbar { display: none; }
+
+.wa-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #d1fae5;
+  background: #ecfdf5;
+  color: #064e3b;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.wa-status-pill__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
+
+.wa-status-pill__text { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+
+.wa-status-pill__cta {
+  color: #0f766e;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 .home-banner {
   position: relative;
   color: var(--white);
@@ -415,6 +476,17 @@ button, input, select { font: inherit; }
   align-items: flex-end;
   overflow: hidden;
   background: #071828;
+}
+
+.home-banner__inner {
+  position: relative;
+  z-index: 1;
+  padding-bottom: 4px;
+}
+
+.home-banner__inner > p {
+  line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 
 .home-banner__media {
@@ -436,11 +508,6 @@ button, input, select { font: inherit; }
   background:
     linear-gradient(105deg, rgba(7, 24, 40, 0.92) 0%, rgba(7, 24, 40, 0.72) 48%, rgba(7, 24, 40, 0.45) 100%),
     linear-gradient(0deg, rgba(7, 24, 40, 0.55), transparent 50%);
-}
-
-.home-banner__inner {
-  position: relative;
-  z-index: 1;
 }
 
 .home-banner__eyebrow {
@@ -510,13 +577,13 @@ button, input, select { font: inherit; }
 
 .collection-tile {
   position: relative;
-  min-height: 220px;
+  min-height: 140px;
   border-radius: 12px;
   overflow: hidden;
   color: var(--white);
   display: flex;
   align-items: flex-end;
-  padding: 24px;
+  padding: 16px;
   background-size: cover;
   background-position: center;
 }
@@ -546,20 +613,20 @@ button, input, select { font: inherit; }
 }
 
 .collection-tile h3 {
-  font-size: 1.25rem;
+  font-size: 1.125rem;
   font-weight: 800;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
 .collection-tile p {
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   opacity: 0.85;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   max-width: 36ch;
 }
 
 .collection-tile span {
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-weight: 700;
 }
 
@@ -854,19 +921,55 @@ button, input, select { font: inherit; }
   pointer-events: auto;
 }
 
+.watchbuy--mini {
+  width: 112px;
+  border-radius: 12px;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+
+.watchbuy--mini.is-dragging {
+  cursor: grabbing;
+  opacity: 0.95;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.4);
+}
+
+.watchbuy__expand-hit {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: inherit;
+  text-align: left;
+  color: inherit;
+  pointer-events: none;
+}
+
+.watchbuy__tap-hint {
+  display: block;
+  padding: 5px 4px 7px;
+  text-align: center;
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+  background: #0b1f33;
+}
+
 .watchbuy__close {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 6px;
+  right: 6px;
   z-index: 3;
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   border: none;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.72);
+  background: rgba(0, 0, 0, 0.65);
   color: #fff;
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   line-height: 1;
 }
 
@@ -876,24 +979,15 @@ button, input, select { font: inherit; }
   background: #111;
 }
 
+.watchbuy__media--mini {
+  aspect-ratio: 9 / 14;
+}
+
 .watchbuy__video {
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-
-.watchbuy__mute {
-  position: absolute;
-  left: 8px;
-  bottom: 8px;
-  border: none;
-  border-radius: 999px;
-  padding: 5px 10px;
-  font-size: 0.65rem;
-  font-weight: 700;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
-  cursor: pointer;
+  pointer-events: none;
 }
 
 .watchbuy__cta {
@@ -908,6 +1002,12 @@ button, input, select { font: inherit; }
   background: linear-gradient(180deg, #12263d, #0b1f33);
 }
 
+.watchbuy__cta--mini {
+  padding: 6px 6px 8px;
+  font-size: 0.62rem;
+  line-height: 1.2;
+}
+
 .watchbuy__cta span {
   font-size: 0.62rem;
   font-weight: 600;
@@ -916,6 +1016,104 @@ button, input, select { font: inherit; }
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.watchbuy__cta--mini span {
+  font-size: 0.55rem;
+  -webkit-line-clamp: 1;
+}
+
+/* Full-size expanded player */
+.watchbuy-full {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.watchbuy-full__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(7, 24, 40, 0.72);
+}
+
+.watchbuy-full__panel {
+  position: relative;
+  z-index: 1;
+  width: min(360px, calc(100vw - 24px));
+  background: #0b1f33;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+  animation: pop-in 0.28s var(--ease-out);
+}
+
+.watchbuy-full__close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.watchbuy-full__media {
+  aspect-ratio: 9 / 16;
+  max-height: min(70vh, 560px);
+  background: #000;
+}
+
+.watchbuy-full__video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.watchbuy-full__footer {
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #0b1f33;
+}
+
+.watchbuy-full__product {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.35;
+}
+
+.watchbuy-full__buy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 46px;
+  border: none;
+  border-radius: 10px;
+  background: #c8102e;
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.watchbuy-full__buy:hover {
+  background: #a50d25;
 }
 
 .pdp__actions {
@@ -1988,6 +2186,19 @@ button, input, select { font: inherit; }
 }
 
 @media (max-width: 700px) {
+  html.has-wa-status {
+    --wa-status-h: 46px;
+  }
+
+  .wa-status-pill {
+    padding: 7px 10px;
+    font-size: 0.75rem;
+  }
+
+  .wa-status-pill__text {
+    max-width: 140px;
+  }
+
   .container {
     padding-inline: 14px;
   }
@@ -2092,6 +2303,10 @@ button, input, select { font: inherit; }
     height: 48px;
     right: 12px;
     bottom: 12px;
+  }
+
+  .watchbuy--mini {
+    width: 100px;
   }
   .cart-toast {
     left: 12px;
@@ -2320,5 +2535,625 @@ button, input, select { font: inherit; }
   .page-enter,
   .home-banner__inner {
     animation: none;
+  }
+}
+
+/* ——— Zoho-style Admin ——— */
+.zoho-admin {
+  --zoho-blue: #2c7be5;
+  --zoho-bg: #f4f6f9;
+  --zoho-side: #f8f9fb;
+  --zoho-text: #1f2937;
+  --zoho-muted: #6b7280;
+  --zoho-border: #e5e7eb;
+  display: flex;
+  min-height: 100vh;
+  background: var(--zoho-bg);
+  color: var(--zoho-text);
+  font-family: 'Segoe UI', 'Nunito Sans', system-ui, sans-serif;
+}
+
+.zoho-admin__sidebar {
+  width: 232px;
+  flex-shrink: 0;
+  background: var(--zoho-side);
+  border-right: 1px solid var(--zoho-border);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  overflow: hidden;
+}
+
+.zoho-admin__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 14px 12px;
+  border-bottom: 1px solid var(--zoho-border);
+}
+
+.zoho-admin__brand-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #1e3a5f, #2c7be5);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+}
+
+.zoho-admin__brand strong {
+  display: block;
+  font-size: 0.92rem;
+  line-height: 1.2;
+}
+
+.zoho-admin__brand span {
+  font-size: 0.72rem;
+  color: var(--zoho-muted);
+}
+
+.zoho-admin__nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 8px 16px;
+}
+
+.zoho-admin__link,
+.zoho-admin__group-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--zoho-text);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+}
+
+.zoho-admin__link:hover,
+.zoho-admin__group-btn:hover {
+  background: #eef2f7;
+}
+
+.zoho-admin__link.is-active {
+  background: var(--zoho-blue);
+  color: #fff;
+}
+
+.zoho-admin__group-btn.is-active-parent {
+  color: var(--zoho-blue);
+  font-weight: 600;
+}
+
+.zoho-admin__ico {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.zoho-admin__group-label {
+  flex: 1;
+}
+
+.zoho-admin__chev {
+  display: grid;
+  place-items: center;
+  transition: transform 0.15s ease;
+  opacity: 0.55;
+}
+
+.zoho-admin__chev.is-open {
+  transform: rotate(90deg);
+}
+
+.zoho-admin__sub {
+  padding: 2px 0 6px 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.zoho-admin__sublink {
+  display: block;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #374151;
+  text-decoration: none;
+  font-size: 0.86rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.zoho-admin__sublink:hover {
+  background: #eef2f7;
+}
+
+.zoho-admin__sublink.is-active {
+  background: #e8eefc;
+  color: var(--zoho-blue);
+  font-weight: 600;
+}
+
+.zoho-admin__section-label {
+  margin: 16px 10px 8px;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  color: #9ca3af;
+  font-weight: 700;
+}
+
+.zoho-admin__app-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  font-size: 0.88rem;
+  color: var(--zoho-text);
+}
+
+.zoho-admin__app-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #0f766e;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+.zoho-admin__store-btn {
+  margin: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: #1f2937;
+  color: #fff;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.zoho-admin__store-ico {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #16a34a;
+  display: grid;
+  place-items: center;
+}
+
+.zoho-admin__store-btn .zoho-admin__chev {
+  margin-left: auto;
+  opacity: 0.8;
+  color: #fff;
+}
+
+.zoho-admin__main {
+  flex: 1;
+  min-width: 0;
+  padding: 20px 22px 32px;
+  overflow-x: auto;
+}
+
+.admin-stub {
+  max-width: 640px;
+  background: #fff;
+  border: 1px solid var(--zoho-border);
+  border-radius: 10px;
+  padding: 1.5rem;
+}
+
+.admin-stub h1 {
+  margin: 0 0 0.4rem;
+  font-size: 1.4rem;
+}
+
+.admin-stub p {
+  color: var(--zoho-muted);
+  margin: 0 0 1rem;
+}
+
+.admin-stub ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: #374151;
+  line-height: 1.7;
+}
+
+/* Reports Center */
+.reports-center--split {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 0;
+  min-height: calc(100vh - 40px);
+  background: #fff;
+  border: 1px solid var(--zoho-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.reports-center__side {
+  border-right: 1px solid var(--zoho-border);
+  background: #fafbfc;
+  padding: 16px 10px;
+  overflow-y: auto;
+}
+
+.reports-center__side h2 {
+  margin: 0 8px 14px;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.reports-center__cat {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #374151;
+  font-size: 0.86rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.reports-center__cat:hover {
+  background: #eef2f7;
+}
+
+.reports-center__cat.is-active {
+  background: #e8eefc;
+  color: var(--zoho-blue);
+  font-weight: 600;
+}
+
+.reports-center__cat-label {
+  margin: 16px 10px 8px;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  color: #9ca3af;
+  font-weight: 700;
+}
+
+.reports-center__content {
+  padding: 16px 20px 24px;
+  min-width: 0;
+}
+
+.reports-center__search-wrap {
+  position: relative;
+  max-width: 420px;
+  margin: 0 auto 18px;
+}
+
+.reports-center__search-ico {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #9ca3af;
+  font-size: 1rem;
+}
+
+.reports-center__search {
+  width: 100%;
+  border: 1px solid #e5e7eb;
+  background: #f3f4f6;
+  border-radius: 999px;
+  padding: 10px 14px 10px 36px;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.reports-center__search:focus {
+  border-color: #93c5fd;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(44, 123, 229, 0.15);
+}
+
+.reports-center__heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.reports-center__heading h1 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.reports-center__count {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--zoho-blue);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+.reports-center__table-wrap {
+  overflow: auto;
+  max-height: calc(100vh - 180px);
+}
+
+.reports-center__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.reports-center__table th {
+  text-align: left;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+  font-weight: 700;
+  padding: 10px 8px;
+  border-bottom: 1px solid #e5e7eb;
+  position: sticky;
+  top: 0;
+  background: #fff;
+}
+
+.reports-center__table td {
+  padding: 12px 8px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 0.88rem;
+  color: #4b5563;
+}
+
+.reports-center__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--zoho-blue);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.reports-center__star {
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+.reports-center__soon {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #9a3412;
+  background: #ffedd5;
+  border-radius: 999px;
+  padding: 2px 7px;
+}
+
+.reports-center__empty-row {
+  text-align: center;
+  color: #9ca3af;
+  padding: 2rem !important;
+}
+
+.reports-center__toolbar {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.reports-center__toolbar h1 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.reports-center__toolbar p {
+  margin: 0.25rem 0 0;
+  color: var(--zoho-muted);
+  font-size: 0.85rem;
+}
+
+.reports-center__back {
+  border: 1px solid var(--zoho-border);
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #374151;
+}
+
+.reports-center__range {
+  margin-left: auto;
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+}
+
+.reports-center__empty,
+.reports-center__error {
+  padding: 2rem;
+  color: #64748b;
+}
+
+.reports-center__error {
+  color: #991b1b;
+}
+
+.report-detail__kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.report-detail__kpi {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+}
+
+.report-detail__kpi-title {
+  font-size: 0.72rem;
+  color: #64748b;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.report-detail__kpi-value {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin-top: 0.35rem;
+}
+
+.report-detail__muted {
+  color: #94a3b8;
+  font-size: 0.78rem;
+  margin-top: 0.25rem;
+}
+
+.report-detail__grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.report-detail__panel {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.report-detail__panel h3 {
+  margin: 0 0 0.85rem;
+  font-size: 1rem;
+}
+
+.report-detail__bars {
+  display: flex;
+  align-items: end;
+  gap: 6px;
+  height: 200px;
+}
+
+.report-detail__bar {
+  flex: 1;
+  min-width: 4px;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.report-detail__bar > div {
+  width: 100%;
+  background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
+  border-radius: 4px 4px 0 0;
+}
+
+.report-detail__rowbar {
+  margin-bottom: 0.7rem;
+}
+
+.report-detail__rowbar > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+.report-detail__track {
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.report-detail__track > div {
+  height: 100%;
+  background: #2563eb;
+}
+
+.report-detail__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.report-detail__table th {
+  text-align: left;
+  font-size: 0.72rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.report-detail__table td {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 960px) {
+  .zoho-admin {
+    flex-direction: column;
+  }
+
+  .zoho-admin__sidebar {
+    width: 100%;
+    height: auto;
+    position: relative;
+  }
+
+  .zoho-admin__nav {
+    max-height: 280px;
+  }
+
+  .reports-center--split {
+    grid-template-columns: 1fr;
+  }
+
+  .reports-center__side {
+    border-right: 0;
+    border-bottom: 1px solid var(--zoho-border);
+    max-height: 220px;
+  }
+
+  .report-detail__grid {
+    grid-template-columns: 1fr;
   }
 }
