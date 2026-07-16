@@ -1,16 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { apiUrl, mediaUrl } from '../config/api.js';
 
-const API_ORIGIN = 'http://localhost:5000';
 const DRAG_THRESHOLD = 8;
 const STORAGE_KEY = 'h2r_watchbuy_dismissed';
-
-function resolveMediaUrl(url) {
-  if (!url) return '';
-  if (url.startsWith('http')) return url;
-  // Prefer same-origin (Vite public) so autoplay is reliable in dev
-  return url.startsWith('/') ? url : `/${url}`;
-}
 
 function defaultPosition() {
   const w = typeof window !== 'undefined' ? window.innerWidth : 400;
@@ -65,9 +58,9 @@ export default function WatchBuyVideo({
   const [dragging, setDragging] = useState(false);
 
   const currentVideo = videos[videoIndex];
-  const src = resolveMediaUrl(currentVideo?.videoUrl);
+  const src = mediaUrl(currentVideo?.videoUrl);
   const fallbackSrc = currentVideo?.videoUrl
-    ? `${API_ORIGIN}${currentVideo.videoUrl.startsWith('/') ? '' : '/'}${currentVideo.videoUrl}`
+    ? mediaUrl(currentVideo.videoUrl)
     : '';
   const buyPath = currentVideo?.productPath || productPath;
   const buyName = currentVideo?.productName || productName;
@@ -99,7 +92,7 @@ export default function WatchBuyVideo({
     let mounted = true;
     const fetchConfig = async () => {
       try {
-        const res = await fetch(`${API_ORIGIN}/api/marketing/public`);
+        const res = await fetch(apiUrl('/marketing/public'));
         const data = await res.json();
         if (!mounted) return;
         const list = (data.floatingVideos || []).filter((v) => v.videoUrl);

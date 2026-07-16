@@ -1,21 +1,17 @@
 /** Frontend catalogue — no Express required (works on Netlify) */
 
-const VIEW_FILES = [
-  '01-front.svg',
-  '02-side.svg',
-  '03-scoop.svg',
-  '04-face.svg',
-  '05-handle.svg',
-];
-
-/** Real lifestyle photos for cards (hover swap uses first two) */
+/** Real bat photos for cards (hover swap uses first two) */
 const PHOTO_POOL = [
-  '/products/photos/bat-1.jpg',
-  '/products/photos/bat-2.jpg',
-  '/products/photos/bat-3.jpg',
-  '/products/photos/bat-4.jpg',
-  '/products/photos/bat-5.jpg',
-  '/products/photos/bat-6.jpg',
+  '/batimages/bat1.webp',
+  '/batimages/bat2.webp',
+  '/batimages/bat3.jpg',
+  '/batimages/bat4.jpg',
+  '/batimages/bat5.jpg',
+  '/batimages/bat6.webp',
+  '/batimages/bat7.jpg',
+  '/batimages/bat8.jpg',
+  '/batimages/bat9.jpg',
+  '/batimages/bat10.jpg',
 ];
 
 function hashId(id) {
@@ -28,9 +24,7 @@ function imagesFor(id) {
   const i = hashId(id) % PHOTO_POOL.length;
   const photoA = PHOTO_POOL[i];
   const photoB = PHOTO_POOL[(i + 1) % PHOTO_POOL.length];
-  // Keep gallery lean on mobile — 2 photos + 3 detail views
-  const detailViews = VIEW_FILES.slice(0, 3).map((file) => `/products/${id}/${file}`);
-  return [photoA, photoB, ...detailViews];
+  return [photoA, photoB];
 }
 
 function withImages(product) {
@@ -358,73 +352,73 @@ export const REVIEWS = [
     id: 1,
     name: 'Balvant Jogi',
     text: 'Bat is so good and perfect balancing. Thank you!',
-    image: '/products/photos/bat-1.jpg',
+    image: '/batimages/bat1.webp',
   },
   {
     id: 2,
     name: 'Jayesh Nawab',
     text: 'Best quality and perfect delivery time. Thank you so much bhai.',
-    image: '/products/photos/bat-2.jpg',
+    image: '/batimages/bat2.webp',
   },
   {
     id: 3,
     name: 'Meetrajsinh Jadeja',
     text: 'Superb bat quality & super service by H2R Sports. Thank you!',
-    image: '/products/photos/bat-3.jpg',
+    image: '/batimages/bat3.jpg',
   },
   {
     id: 4,
     name: 'Akshit Shetty',
     text: 'Amazing bats… balance and weight distribution are excellent.',
-    image: '/products/photos/bat-4.jpg',
+    image: '/batimages/bat4.jpg',
   },
   {
     id: 5,
     name: 'Ashutosh Jha',
     text: 'Ordered from Delhi NCR. Huge difference vs local market bats.',
-    image: '/products/photos/bat-5.jpg',
+    image: '/batimages/bat5.jpg',
   },
   {
     id: 6,
     name: 'Sandeep Sandy',
     text: 'Great punch and good finishing — value for money.',
-    image: '/products/photos/bat-6.jpg',
+    image: '/batimages/bat6.webp',
   },
   {
     id: 7,
     name: 'Priyanshu Barik',
     text: 'Craftsmanship stands out — perfect balance and premium finish.',
-    image: '/products/photos/bat-1.jpg',
+    image: '/batimages/bat7.jpg',
   },
   {
     id: 8,
     name: 'Anu',
     text: 'Excellent customer service and a very trustable brand.',
-    image: '/products/photos/bat-2.jpg',
+    image: '/batimages/bat8.jpg',
   },
   {
     id: 9,
     name: 'Ganesh Borkar',
     text: 'Smashed 5 sixes with it today. Absolutely loved it!',
-    image: '/products/photos/bat-3.jpg',
+    image: '/batimages/bat9.jpg',
   },
   {
     id: 10,
     name: 'Vasu Naik',
     text: 'Super quality bat and packaging. Will order again.',
-    image: '/products/photos/bat-4.jpg',
+    image: '/batimages/bat10.jpg',
   },
   {
     id: 11,
     name: 'Syed Khaled',
     text: 'Awesome bat, super quality and service. Love H2R Sports.',
-    image: '/products/photos/bat-5.jpg',
+    image: '/batimages/bat1.webp',
   },
   {
     id: 12,
     name: 'Karan More',
     text: 'Rhino style punch is excellent. Highly recommended.',
-    image: '/products/photos/bat-6.jpg',
+    image: '/batimages/bat2.webp',
   },
 ];
 

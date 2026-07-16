@@ -49,7 +49,10 @@ function getProductImages(productId) {
       .readdirSync(dir)
       .filter((file) => /\.(jpe?g|png|webp|svg|gif)$/i.test(file))
       .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-    if (files.length) return files.map((file) => `/products/${productId}/${file}`);
+    // Prefer real photos over SVG placeholders when both exist
+    const rasters = files.filter((file) => /\.(jpe?g|png|webp|gif)$/i.test(file));
+    const use = rasters.length ? rasters : files;
+    if (use.length) return use.map((file) => `/products/${productId}/${file}`);
   }
   return [...PLACEHOLDER_IMGS];
 }

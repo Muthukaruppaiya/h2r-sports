@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { apiUrl } from '../config/api.js';
 import { BRAND } from '../utils/india';
 
 function buildStatusLink(prefillMessage) {
@@ -13,7 +14,7 @@ export default function WhatsAppStatusBar() {
     let mounted = true;
     const fetchStatuses = async () => {
       try {
-        const res = await fetch('http://localhost:5000/api/marketing/public');
+        const res = await fetch(apiUrl('/marketing/public'));
         const data = await res.json();
         if (!mounted) return;
         setStatuses(data.whatsappStatuses || []);

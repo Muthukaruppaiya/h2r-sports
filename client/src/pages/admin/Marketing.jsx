@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../../api/client';
+import { mediaUrl } from '../../config/api.js';
 import { isInstagramUrl } from '../../utils/instagram';
 
 const emptyVideo = () => ({
@@ -222,7 +223,7 @@ export default function Marketing() {
                 <div style={{ marginTop: '0.75rem' }}>
                   <p style={{ margin: '0 0 0.4rem', fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>Preview (autoplay muted)</p>
                   <video
-                    src={`http://localhost:5000${video.videoUrl}`}
+                    src={mediaUrl(video.videoUrl)}
                     muted
                     autoPlay
                     loop

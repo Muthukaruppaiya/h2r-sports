@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1000" viewBox="0 0 800 1000">
-  <rect width="800" height="1000" fill="#f7f3ee"/>
-  <rect x="355" y="90" width="90" height="700" rx="20" fill="#b8894a"/>
-  <ellipse cx="400" cy="320" rx="28" ry="160" fill="#8d6a3a" opacity="0.55"/>
-  <rect x="345" y="790" width="110" height="120" rx="18" fill="#0a2540"/>
-  <text x="400" y="60" text-anchor="middle" font-family="Arial,sans-serif" font-size="28" font-weight="700" fill="#0a2540">SCOOP / BACK</text>
-</svg>
