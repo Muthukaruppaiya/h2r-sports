@@ -24,9 +24,12 @@ const ROOT         = path.join(__dirname, '..');
 const FRAMES_DIR   = path.join(ROOT, 'FRAMES');
 const CLIENT_DIST  = path.join(ROOT, 'client', 'dist');
 const PRODUCTS_IMG_DIR = path.join(ROOT, 'client', 'public', 'products');
-const MARKETING_DIR = path.join(ROOT, 'client', 'public', 'marketing');
+const LEGACY_MARKETING_DIR = path.join(ROOT, 'client', 'public', 'marketing');
+/** Writable upload root on Render (lives next to server code) */
+const MARKETING_DIR = path.join(__dirname, 'uploads', 'marketing');
 const MARKETING_VIDEOS_DIR = path.join(MARKETING_DIR, 'videos');
 const MARKETING_STATUS_DIR = path.join(MARKETING_DIR, 'statuses');
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 
 const PORT      = process.env.PORT      || 5000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/h2r-sports';
@@ -125,8 +128,12 @@ const upload = multer({ storage: uploadStorage });
 
 const videoUploadStorage = multer.diskStorage({
   destination: (_req, _file, cb) => {
-    if (!fs.existsSync(MARKETING_VIDEOS_DIR)) fs.mkdirSync(MARKETING_VIDEOS_DIR, { recursive: true });
-    cb(null, MARKETING_VIDEOS_DIR);
+    try {
+      fs.mkdirSync(MARKETING_VIDEOS_DIR, { recursive: true });
+      cb(null, MARKETING_VIDEOS_DIR);
+    } catch (err) {
+      cb(err);
+    }
   },
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase() || '.mp4';
@@ -134,19 +141,32 @@ const videoUploadStorage = multer.diskStorage({
   },
 });
 
+function isAllowedVideoFile(file) {
+  const name = String(file?.originalname || '');
+  const type = String(file?.mimetype || '').toLowerCase();
+  if (type.startsWith('video/')) return true;
+  // Browsers / phones sometimes send octet-stream for .mov/.mp4
+  if (/\.(mp4|webm|mov|m4v|avi|mkv|qt)$/i.test(name)) return true;
+  return false;
+}
+
 const videoUpload = multer({
   storage: videoUploadStorage,
-  limits: { fileSize: 80 * 1024 * 1024 },
+  limits: { fileSize: MAX_VIDEO_BYTES },
   fileFilter: (_req, file, cb) => {
-    const ok = file.mimetype.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(file.originalname);
-    cb(ok ? null : new Error('Only video files (mp4, webm, mov) are allowed'), ok);
+    if (isAllowedVideoFile(file)) return cb(null, true);
+    cb(new Error('Only video files are allowed (mp4, webm, mov).'));
   },
 });
 
 const statusMediaStorage = multer.diskStorage({
   destination: (_req, _file, cb) => {
-    if (!fs.existsSync(MARKETING_STATUS_DIR)) fs.mkdirSync(MARKETING_STATUS_DIR, { recursive: true });
-    cb(null, MARKETING_STATUS_DIR);
+    try {
+      fs.mkdirSync(MARKETING_STATUS_DIR, { recursive: true });
+      cb(null, MARKETING_STATUS_DIR);
+    } catch (err) {
+      cb(err);
+    }
   },
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase() || '.bin';
@@ -154,21 +174,44 @@ const statusMediaStorage = multer.diskStorage({
   },
 });
 
+function isAllowedStatusMedia(file) {
+  const name = String(file?.originalname || '');
+  const type = String(file?.mimetype || '').toLowerCase();
+  if (type.startsWith('image/') || type.startsWith('video/')) return true;
+  if (/\.(jpe?g|png|webp|gif|mp4|webm|mov|m4v)$/i.test(name)) return true;
+  return false;
+}
+
 const statusMediaUpload = multer({
   storage: statusMediaStorage,
-  limits: { fileSize: 40 * 1024 * 1024 },
+  limits: { fileSize: MAX_VIDEO_BYTES },
   fileFilter: (_req, file, cb) => {
-    const isImage = file.mimetype.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(file.originalname);
-    const isVideo = file.mimetype.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(file.originalname);
-    cb(isImage || isVideo ? null : new Error('Only photo or video files are allowed'), isImage || isVideo);
+    if (isAllowedStatusMedia(file)) return cb(null, true);
+    cb(new Error('Only photo or video files are allowed.'));
   },
 });
 
 function detectMediaType(file) {
   if (!file) return null;
-  if (file.mimetype.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(file.originalname)) return 'image';
-  if (file.mimetype.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(file.originalname)) return 'video';
+  const name = String(file.originalname || '');
+  const type = String(file.mimetype || '').toLowerCase();
+  if (type.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(name)) return 'image';
+  if (type.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(name)) return 'video';
   return null;
+}
+
+function uploadErrorMessage(err, fallback) {
+  if (!err) return fallback;
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return `File is too large. Max ${Math.round(MAX_VIDEO_BYTES / (1024 * 1024))}MB. Compress the video and try again.`;
+    }
+    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      return 'Unexpected upload field. Please try again.';
+    }
+    return err.message || fallback;
+  }
+  return err.message || fallback;
 }
 
 function clampDurationDays(value) {
@@ -655,7 +698,10 @@ app.get('/api/admin/marketing', protect, admin, async (_req, res) => {
 
 app.post('/api/admin/marketing/upload-video', protect, admin, (req, res) => {
   videoUpload.single('video')(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.message || 'Video upload failed' });
+    if (err) {
+      console.error('Video upload error:', err);
+      return res.status(400).json({ error: uploadErrorMessage(err, 'Video upload failed') });
+    }
     if (!req.file) return res.status(400).json({ error: 'No video file selected' });
     res.json({ ok: true, url: `/marketing/videos/${req.file.filename}` });
   });
@@ -663,7 +709,10 @@ app.post('/api/admin/marketing/upload-video', protect, admin, (req, res) => {
 
 app.post('/api/admin/marketing/upload-status-media', protect, admin, (req, res) => {
   statusMediaUpload.single('media')(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.message || 'Status media upload failed' });
+    if (err) {
+      console.error('Status media upload error:', err);
+      return res.status(400).json({ error: uploadErrorMessage(err, 'Status media upload failed') });
+    }
     if (!req.file) return res.status(400).json({ error: 'No photo or video selected' });
     const mediaType = detectMediaType(req.file);
     if (!mediaType) return res.status(400).json({ error: 'Unsupported file type' });
@@ -981,6 +1030,9 @@ app.put('/api/admin/customers/:email', protect, admin, async (req, res) => {
 app.use('/products', express.static(PRODUCTS_IMG_DIR, { maxAge: '1d' }));
 app.use('/frames', express.static(FRAMES_DIR, { maxAge: '1d', fallthrough: false }));
 app.use('/marketing', express.static(MARKETING_DIR, { maxAge: '1d' }));
+if (fs.existsSync(LEGACY_MARKETING_DIR)) {
+  app.use('/marketing', express.static(LEGACY_MARKETING_DIR, { maxAge: '1d' }));
+}
 
 if (fs.existsSync(CLIENT_DIST)) {
   app.use(express.static(CLIENT_DIST));

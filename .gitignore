@@ -1,4 +1,5 @@
 server/orders.json
+server/uploads/
 node_modules/
 client/node_modules/
 server/node_modules/

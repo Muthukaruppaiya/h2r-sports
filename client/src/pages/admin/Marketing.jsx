@@ -149,10 +149,15 @@ export default function Marketing() {
 
   const uploadVideoFile = async (file) => {
     if (!file || !videoModal) return;
+    const maxBytes = 50 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      flash('error', 'Video is too large (max 50MB). Compress it or use a shorter clip.');
+      return;
+    }
     setUploadingVideo(true);
     try {
       const data = new FormData();
-      data.append('video', file);
+      data.append('video', file, file.name || 'video.mp4');
       const res = await api.post('/admin/marketing/upload-video', data);
       setVideoModal((prev) =>
         prev ? { ...prev, draft: { ...prev.draft, videoUrl: res.data.url } } : prev
@@ -167,10 +172,15 @@ export default function Marketing() {
 
   const uploadStatusMedia = async (file) => {
     if (!file || !statusModal) return;
+    const maxBytes = 50 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      flash('error', 'File is too large (max 50MB). Use a smaller photo/video.');
+      return;
+    }
     setUploadingStatus(true);
     try {
       const data = new FormData();
-      data.append('media', file);
+      data.append('media', file, file.name || 'status-media');
       const res = await api.post('/admin/marketing/upload-status-media', data);
       setStatusModal((prev) =>
         prev
@@ -590,7 +600,7 @@ export default function Marketing() {
             </label>
 
             <label className="mkt-field">
-              <span>Video file (mp4 / mov)</span>
+              <span>Video file (mp4 / mov, max 50MB)</span>
               <input
                 type="file"
                 accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
@@ -603,6 +613,7 @@ export default function Marketing() {
                   ✓ {videoModal.draft.videoUrl.split('/').pop()}
                 </em>
               )}
+              <em className="mkt-field__hint">Tip: compress long phone videos before upload.</em>
             </label>
 
             <label className="mkt-field">
