@@ -5,6 +5,7 @@ import ProductRail from '../components/ProductRail';
 import TrustStrip from '../components/TrustStrip';
 import Reviews from '../components/Reviews';
 import AnnouncementBar from '../components/AnnouncementBar';
+import WhatsAppStatusBar from '../components/WhatsAppStatusBar';
 import { api } from '../api/store';
 
 export default function Home() {
@@ -73,12 +74,16 @@ export default function Home() {
             <Link to="/shop" className="btn btn--primary">
               Shop all bats
             </Link>
-            <Link to="/collections/karrupu-edition" className="btn btn--outline">
-              Karrupu Edition
-            </Link>
+            {collections[0] && (
+              <Link to={`/collections/${collections[0].slug || collections[0].id}`} className="btn btn--outline">
+                {collections[0].name}
+              </Link>
+            )}
           </div>
         </div>
       </section>
+
+      <WhatsAppStatusBar />
 
       <CollectionGrid collections={collections} />
       <ProductRail title="Our Bats" products={featured} loading={loading} />

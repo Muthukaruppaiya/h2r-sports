@@ -26,6 +26,7 @@ const CLIENT_DIST  = path.join(ROOT, 'client', 'dist');
 const PRODUCTS_IMG_DIR = path.join(ROOT, 'client', 'public', 'products');
 const MARKETING_DIR = path.join(ROOT, 'client', 'public', 'marketing');
 const MARKETING_VIDEOS_DIR = path.join(MARKETING_DIR, 'videos');
+const MARKETING_STATUS_DIR = path.join(MARKETING_DIR, 'statuses');
 
 const PORT      = process.env.PORT      || 5000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/h2r-sports';
@@ -141,6 +142,55 @@ const videoUpload = multer({
     cb(ok ? null : new Error('Only video files (mp4, webm, mov) are allowed'), ok);
   },
 });
+
+const statusMediaStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    if (!fs.existsSync(MARKETING_STATUS_DIR)) fs.mkdirSync(MARKETING_STATUS_DIR, { recursive: true });
+    cb(null, MARKETING_STATUS_DIR);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase() || '.bin';
+    cb(null, `status-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
+  },
+});
+
+const statusMediaUpload = multer({
+  storage: statusMediaStorage,
+  limits: { fileSize: 40 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const isImage = file.mimetype.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(file.originalname);
+    const isVideo = file.mimetype.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(file.originalname);
+    cb(isImage || isVideo ? null : new Error('Only photo or video files are allowed'), isImage || isVideo);
+  },
+});
+
+function detectMediaType(file) {
+  if (!file) return null;
+  if (file.mimetype.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(file.originalname)) return 'image';
+  if (file.mimetype.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(file.originalname)) return 'video';
+  return null;
+}
+
+function clampDurationDays(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(7, Math.max(1, Math.round(n)));
+}
+
+function computeExpiresAt(publishedAt, durationDays) {
+  const start = new Date(publishedAt || Date.now());
+  const end = new Date(start);
+  end.setDate(end.getDate() + clampDurationDays(durationDays));
+  return end;
+}
+
+function isStatusLive(status, now = new Date()) {
+  if (!status || status.active === false) return false;
+  if (!status.mediaUrl) return false;
+  const expiresAt = status.expiresAt ? new Date(status.expiresAt) : null;
+  if (!expiresAt || Number.isNaN(expiresAt.getTime())) return false;
+  return expiresAt > now;
+}
 
 // ─── Order ID generator ───────────────────────────────────────────────────────
 function makeOrderId() {
@@ -548,35 +598,32 @@ app.get('/api/marketing/public', async (_req, res) => {
       settings = await MarketingSettings.create({
         key: 'default',
         floatingVideos: [],
-        whatsappStatuses: [
-          {
-            id: 'default-status-1',
-            text: 'New arrivals live now',
-            ctaText: 'View now',
-            prefillMessage: 'Hi H2R Sports! Please share new arrivals.',
-            active: true,
-            sortOrder: 1,
-          },
-          {
-            id: 'default-status-2',
-            text: 'Free shipping all over India',
-            ctaText: 'Order on WhatsApp',
-            prefillMessage: 'Hi H2R Sports! I want to order via WhatsApp.',
-            active: true,
-            sortOrder: 2,
-          },
-        ],
+        whatsappStatuses: [],
       });
       settings = settings.toObject();
     }
 
+    const now = new Date();
     const floatingVideos = (settings.floatingVideos || [])
       .filter((v) => v.active !== false)
       .map(formatFloatingVideo)
       .filter(Boolean)
       .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
     const whatsappStatuses = (settings.whatsappStatuses || [])
-      .filter((s) => s.active)
+      .filter((s) => isStatusLive(s, now))
+      .map((s) => ({
+        id: s.id,
+        title: s.title || s.text || 'Update',
+        text: s.text || '',
+        mediaUrl: s.mediaUrl,
+        mediaType: s.mediaType,
+        durationDays: s.durationDays || 1,
+        publishedAt: s.publishedAt,
+        expiresAt: s.expiresAt,
+        ctaText: s.ctaText || 'Message us',
+        prefillMessage: s.prefillMessage || '',
+        sortOrder: s.sortOrder || 0,
+      }))
       .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
 
     res.json({ floatingVideos, whatsappStatuses });
@@ -591,7 +638,16 @@ app.get('/api/admin/marketing', protect, admin, async (_req, res) => {
     if (!settings) {
       settings = await MarketingSettings.create({ key: 'default' });
     }
-    res.json({ settings: settings.toObject() });
+    const payload = settings.toObject();
+    const now = new Date();
+    payload.whatsappStatuses = (payload.whatsappStatuses || []).map((s) => ({
+      ...s,
+      isExpired: !isStatusLive(s, now),
+      hoursLeft: s.expiresAt
+        ? Math.max(0, Math.round((new Date(s.expiresAt) - now) / 36e5))
+        : 0,
+    }));
+    res.json({ settings: payload });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -602,6 +658,20 @@ app.post('/api/admin/marketing/upload-video', protect, admin, (req, res) => {
     if (err) return res.status(400).json({ error: err.message || 'Video upload failed' });
     if (!req.file) return res.status(400).json({ error: 'No video file selected' });
     res.json({ ok: true, url: `/marketing/videos/${req.file.filename}` });
+  });
+});
+
+app.post('/api/admin/marketing/upload-status-media', protect, admin, (req, res) => {
+  statusMediaUpload.single('media')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message || 'Status media upload failed' });
+    if (!req.file) return res.status(400).json({ error: 'No photo or video selected' });
+    const mediaType = detectMediaType(req.file);
+    if (!mediaType) return res.status(400).json({ error: 'Unsupported file type' });
+    res.json({
+      ok: true,
+      url: `/marketing/statuses/${req.file.filename}`,
+      mediaType,
+    });
   });
 });
 
@@ -637,19 +707,45 @@ app.put('/api/admin/marketing', protect, admin, async (req, res) => {
         instagramUrl,
         productPath: String(v.productPath || '/shop').trim(),
         productName: String(v.productName || 'Shop now').trim(),
+        productId: String(v.productId || '').trim(),
         active: v.active !== false,
         sortOrder: Number(v.sortOrder) || idx + 1,
       });
     }
 
-    const sanitizedStatuses = whatsappStatuses.map((s, idx) => ({
-      id: s.id || `status-${Date.now()}-${idx}`,
-      text: String(s.text || '').trim(),
-      ctaText: String(s.ctaText || 'Message us').trim(),
-      prefillMessage: String(s.prefillMessage || '').trim(),
-      active: s.active !== false,
-      sortOrder: Number(s.sortOrder) || idx + 1,
-    })).filter((s) => s.text);
+    const existing = await MarketingSettings.findOne({ key: 'default' }).lean();
+    const existingById = new Map((existing?.whatsappStatuses || []).map((s) => [s.id, s]));
+
+    const sanitizedStatuses = [];
+    for (const [idx, s] of whatsappStatuses.entries()) {
+      const mediaUrl = String(s.mediaUrl || '').trim();
+      const title = String(s.title || s.text || '').trim();
+      if (!mediaUrl) continue; // skip legacy text-only / incomplete entries
+      const mediaType = s.mediaType === 'video' ? 'video' : 'image';
+      const durationDays = clampDurationDays(s.durationDays);
+      const prev = existingById.get(s.id);
+      const mediaChanged = !prev || prev.mediaUrl !== mediaUrl;
+      const resetTimer = s.resetTimer === true || mediaChanged || !prev?.publishedAt;
+      const publishedAt = resetTimer
+        ? new Date()
+        : new Date(s.publishedAt || prev?.publishedAt || Date.now());
+      const expiresAt = computeExpiresAt(publishedAt, durationDays);
+
+      sanitizedStatuses.push({
+        id: s.id || `status-${Date.now()}-${idx}`,
+        title: title || 'Status',
+        text: String(s.text || title || '').trim(),
+        mediaUrl,
+        mediaType,
+        durationDays,
+        publishedAt,
+        expiresAt,
+        ctaText: String(s.ctaText || 'Message us').trim(),
+        prefillMessage: String(s.prefillMessage || '').trim(),
+        active: s.active !== false,
+        sortOrder: Number(s.sortOrder) || idx + 1,
+      });
+    }
 
     const updated = await MarketingSettings.findOneAndUpdate(
       { key: 'default' },
@@ -906,6 +1002,9 @@ async function start() {
   try {
     if (!fs.existsSync(MARKETING_VIDEOS_DIR)) {
       fs.mkdirSync(MARKETING_VIDEOS_DIR, { recursive: true });
+    }
+    if (!fs.existsSync(MARKETING_STATUS_DIR)) {
+      fs.mkdirSync(MARKETING_STATUS_DIR, { recursive: true });
     }
     await mongoose.connect(MONGO_URI);
     console.log(`✓ MongoDB connected → ${MONGO_URI}`);

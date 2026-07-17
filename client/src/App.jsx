@@ -4,7 +4,6 @@ import AnnouncementBar from './components/AnnouncementBar';import Navbar from '.
 import Footer from './components/Footer';
 import CartToast from './components/CartToast';
 import WatchBuyVideo from './components/WatchBuyVideo';
-import WhatsAppStatusBar from './components/WhatsAppStatusBar';
 import Home from './pages/Home';
 import Shop from './pages/Shop';
 import Collection from './pages/Collection';
@@ -117,7 +116,6 @@ export default function App() {
     <>
       <ScrollLock />
       <AnnouncementBar />
-      <WhatsAppStatusBar />
       <Navbar />
       <CartToast />
       <PageShell>

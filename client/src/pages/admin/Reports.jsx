@@ -8,59 +8,31 @@ const PAYMENT_LABELS = {
   card: 'Card',
 };
 
+/** Only reports backed by live DB overview data */
+const LIVE_REPORTS = [
+  { id: 'sales-overview', name: 'Sales Overview', category: 'sales', createdBy: 'System Generated', view: 'overview' },
+  { id: 'sales-by-customer', name: 'Sales by Customer', category: 'sales', createdBy: 'System Generated', view: 'customers' },
+  { id: 'sales-by-items', name: 'Sales By Items', category: 'sales', createdBy: 'System Generated', view: 'products' },
+  { id: 'sales-by-orders', name: 'Sales By Orders', category: 'sales', createdBy: 'System Generated', view: 'status' },
+  { id: 'order-fulfillment', name: 'Order Fulfillment', category: 'sales', createdBy: 'System Generated', view: 'overview' },
+  { id: 'payments-received', name: 'Payments Received', category: 'payments', createdBy: 'System Generated', view: 'payments' },
+  { id: 'payment-methods', name: 'Payment Method Mix', category: 'payments', createdBy: 'System Generated', view: 'payments' },
+  { id: 'customer-spend', name: 'Top Customers by Spend', category: 'customers', createdBy: 'System Generated', view: 'customers' },
+  { id: 'activity-status', name: 'Order Status Activity', category: 'activity', createdBy: 'System Generated', view: 'status' },
+];
+
 const CATEGORIES = [
   { id: 'all', label: 'All Reports', icon: 'list' },
-  { id: 'shared', label: 'Shared Reports', icon: 'share' },
-  { id: 'funnel', label: 'Store Funnel', icon: 'funnel' },
   { id: 'sales', label: 'Sales', icon: 'folder' },
-  { id: 'inventory', label: 'Inventory', icon: 'folder' },
   { id: 'payments', label: 'Payments Received', icon: 'folder' },
   { id: 'activity', label: 'Activity', icon: 'folder' },
   { id: 'customers', label: 'Customers', icon: 'folder' },
-  { id: 'carts', label: 'Abandoned Carts', icon: 'folder' },
-  { id: 'traffic', label: 'Traffic', icon: 'folder' },
-];
-
-const REPORT_CATALOG = [
-  { id: 'sales-overview', name: 'Sales Overview', category: 'sales', createdBy: 'System Generated', live: true, view: 'overview' },
-  { id: 'sales-by-customer', name: 'Sales by Customer', category: 'sales', createdBy: 'System Generated', live: true, view: 'customers' },
-  { id: 'sales-by-items', name: 'Sales By Items', category: 'sales', createdBy: 'System Generated', live: true, view: 'products' },
-  { id: 'sales-by-orders', name: 'Sales By Orders', category: 'sales', createdBy: 'System Generated', live: true, view: 'status' },
-  { id: 'order-fulfillment', name: 'Order Fulfillment By Item', category: 'sales', createdBy: 'System Generated', live: true, view: 'overview' },
-  { id: 'sales-return-history', name: 'Sales Return History', category: 'sales', createdBy: 'System Generated', live: false },
-  { id: 'sales-by-variant', name: 'Sales by Variant', category: 'sales', createdBy: 'System Generated', live: false },
-  { id: 'sales-by-coupon', name: 'Sales by Coupon', category: 'sales', createdBy: 'System Generated', live: false },
-  { id: 'sales-by-category', name: 'Sales by Category', category: 'sales', createdBy: 'System Generated', live: false },
-  { id: 'inventory-stock', name: 'Stock on Hand', category: 'inventory', createdBy: 'System Generated', live: false },
-  { id: 'inventory-low', name: 'Low Stock Items', category: 'inventory', createdBy: 'System Generated', live: false },
-  { id: 'payments-received', name: 'Payments Received', category: 'payments', createdBy: 'System Generated', live: true, view: 'payments' },
-  { id: 'payment-methods', name: 'Payment Method Mix', category: 'payments', createdBy: 'System Generated', live: true, view: 'payments' },
-  { id: 'customer-spend', name: 'Top Customers by Spend', category: 'customers', createdBy: 'System Generated', live: true, view: 'customers' },
-  { id: 'customer-orders', name: 'Orders by Customer', category: 'customers', createdBy: 'System Generated', live: true, view: 'customers' },
-  { id: 'activity-status', name: 'Order Status Activity', category: 'activity', createdBy: 'System Generated', live: true, view: 'status' },
-  { id: 'abandoned-carts', name: 'Abandoned Carts', category: 'carts', createdBy: 'System Generated', live: false },
-  { id: 'traffic-overview', name: 'Store Traffic Overview', category: 'traffic', createdBy: 'System Generated', live: false },
-  { id: 'funnel-conversion', name: 'Store Funnel Conversion', category: 'funnel', createdBy: 'System Generated', live: false },
-  { id: 'shared-weekly', name: 'Weekly Performance Snapshot', category: 'shared', createdBy: 'Admin', live: true, view: 'overview' },
 ];
 
 const SIDE_ICONS = {
   list: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
       <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
-    </svg>
-  ),
-  share: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <circle cx="18" cy="5" r="3" />
-      <circle cx="6" cy="12" r="3" />
-      <circle cx="18" cy="19" r="3" />
-      <path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4" />
-    </svg>
-  ),
-  funnel: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M3 4h18l-7 8v6l-4 2v-8L3 4z" />
     </svg>
   ),
   folder: (
@@ -99,7 +71,7 @@ export default function Reports() {
 
   const filteredReports = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return REPORT_CATALOG.filter((r) => {
+    return LIVE_REPORTS.filter((r) => {
       const catOk = category === 'all' || r.category === category;
       const qOk = !q || r.name.toLowerCase().includes(q) || r.category.includes(q);
       return catOk && qOk;
@@ -109,7 +81,7 @@ export default function Reports() {
   const categoryLabel = (id) => CATEGORIES.find((c) => c.id === id)?.label || id;
 
   useEffect(() => {
-    if (!activeReport?.live) return undefined;
+    if (!activeReport) return undefined;
     let cancelled = false;
     const load = async () => {
       setLoading(true);
@@ -135,7 +107,6 @@ export default function Reports() {
     setLastVisited(next);
     localStorage.setItem('h2r_report_visits', JSON.stringify(next));
     setActiveReport(report);
-    if (report.category !== 'all') setCategory(report.category);
   };
 
   const maxRevenueInTrend = useMemo(() => {
@@ -152,26 +123,21 @@ export default function Reports() {
           </button>
           <div>
             <h1>{activeReport.name}</h1>
-            <p>{categoryLabel(activeReport.category)} · {activeReport.createdBy}</p>
+            <p>
+              {categoryLabel(activeReport.category)} · {activeReport.createdBy}
+            </p>
           </div>
-          {activeReport.live && (
-            <select value={days} onChange={(e) => setDays(Number(e.target.value))} className="reports-center__range">
-              <option value={7}>Last 7 days</option>
-              <option value={30}>Last 30 days</option>
-              <option value={90}>Last 90 days</option>
-              <option value={180}>Last 180 days</option>
-            </select>
-          )}
+          <select value={days} onChange={(e) => setDays(Number(e.target.value))} className="reports-center__range">
+            <option value={7}>Last 7 days</option>
+            <option value={30}>Last 30 days</option>
+            <option value={90}>Last 90 days</option>
+            <option value={180}>Last 180 days</option>
+          </select>
         </div>
 
-        {!activeReport.live && (
-          <div className="reports-center__empty">This report is coming soon. Data wiring will be added next.</div>
-        )}
-
-        {activeReport.live && loading && <div className="reports-center__empty">Loading report…</div>}
-        {activeReport.live && error && <div className="reports-center__error">{error}</div>}
-
-        {activeReport.live && !loading && !error && data && (
+        {loading && <div className="reports-center__empty">Loading report…</div>}
+        {error && <div className="reports-center__error">{error}</div>}
+        {!loading && !error && data && (
           <ReportDetail view={activeReport.view} data={data} days={days} maxRevenueInTrend={maxRevenueInTrend} />
         )}
       </div>
@@ -182,24 +148,8 @@ export default function Reports() {
     <div className="reports-center reports-center--split">
       <aside className="reports-center__side">
         <h2>Reports Center</h2>
-
-        <button
-          type="button"
-          className={`reports-center__cat${category === 'shared' ? ' is-active' : ''}`}
-          onClick={() => setCategory('shared')}
-        >
-          <span>{SIDE_ICONS.share}</span> Shared Reports
-        </button>
-        <button
-          type="button"
-          className={`reports-center__cat${category === 'funnel' ? ' is-active' : ''}`}
-          onClick={() => setCategory('funnel')}
-        >
-          <span>{SIDE_ICONS.funnel}</span> Store Funnel
-        </button>
-
         <div className="reports-center__cat-label">REPORT CATEGORY</div>
-        {CATEGORIES.filter((c) => !['shared', 'funnel'].includes(c.id)).map((c) => (
+        {CATEGORIES.map((c) => (
           <button
             key={c.id}
             type="button"
@@ -247,7 +197,6 @@ export default function Reports() {
                     <button type="button" className="reports-center__name" onClick={() => openReport(report)}>
                       <span className="reports-center__star">☆</span>
                       {report.name}
-                      {!report.live && <span className="reports-center__soon">Soon</span>}
                     </button>
                   </td>
                   <td>{categoryLabel(report.category)}</td>
@@ -335,16 +284,24 @@ function ReportDetail({ view, data, days, maxRevenueInTrend }) {
               </tr>
             </thead>
             <tbody>
-              {(topCustomers || []).map((c) => (
-                <tr key={c.email}>
-                  <td>
-                    <strong>{c.name}</strong>
-                    <div className="report-detail__muted">{c.email}</div>
+              {(topCustomers || []).length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="reports-center__empty-row">
+                    No customer data in this range.
                   </td>
-                  <td>{c.orders}</td>
-                  <td>₹{Math.round(c.spend).toLocaleString('en-IN')}</td>
                 </tr>
-              ))}
+              ) : (
+                (topCustomers || []).map((c) => (
+                  <tr key={c.email}>
+                    <td>
+                      <strong>{c.name}</strong>
+                      <div className="report-detail__muted">{c.email}</div>
+                    </td>
+                    <td>{c.orders}</td>
+                    <td>₹{Math.round(c.spend).toLocaleString('en-IN')}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </Panel>
@@ -362,14 +319,22 @@ function ReportDetail({ view, data, days, maxRevenueInTrend }) {
               </tr>
             </thead>
             <tbody>
-              {(topProducts || []).map((p) => (
-                <tr key={p.id}>
-                  <td>{p.name}</td>
-                  <td>{p.units}</td>
-                  <td>{p.orders}</td>
-                  <td>₹{Math.round(p.revenue).toLocaleString('en-IN')}</td>
+              {(topProducts || []).length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="reports-center__empty-row">
+                    No product sales in this range.
+                  </td>
                 </tr>
-              ))}
+              ) : (
+                (topProducts || []).map((p) => (
+                  <tr key={p.id}>
+                    <td>{p.name}</td>
+                    <td>{p.units}</td>
+                    <td>{p.orders}</td>
+                    <td>₹{Math.round(p.revenue).toLocaleString('en-IN')}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </Panel>

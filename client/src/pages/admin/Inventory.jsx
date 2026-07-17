@@ -8,12 +8,12 @@ const EMPTY_FORM = {
   tagline: '',
   price: 0,
   compareAt: '',
-  collection: 'karrupu-edition',
-  category: 'H2R Karrupu Edition',
+  collection: '',
+  category: '',
   badge: '',
   willow: '',
   weight: '',
-  madeIn: 'Tamil Nadu, India',
+  madeIn: '',
   description: '',
   features: '',
   images: '',
@@ -22,17 +22,6 @@ const EMPTY_FORM = {
   topSelling: false,
   mostLoved: false,
 };
-
-const COLLECTIONS = [
-  { id: 'karrupu-edition', label: 'H2R Karrupu Edition', category: 'H2R Karrupu Edition' },
-  { id: 'killer-edition', label: 'Killer Edition', category: 'Killer Edition' },
-  { id: 'stumper-edition', label: 'Stumper Edition', category: 'Stumper Edition' },
-  {
-    id: 'soft-tennis-kerala-scoop',
-    label: 'Soft Tennis Bat [ Kerala Scoop ]',
-    category: 'Soft Tennis Bat [ Kerala Scoop ]',
-  },
-];
 
 const inputStyle = {
   width: '100%',
@@ -52,6 +41,7 @@ const labelStyle = {
 
 export default function Inventory() {
   const [products, setProducts] = useState([]);
+  const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -60,6 +50,7 @@ export default function Inventory() {
 
   useEffect(() => {
     fetchProducts();
+    fetchCollections();
   }, []);
 
   const fetchProducts = async () => {
@@ -70,6 +61,21 @@ export default function Inventory() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCollections = async () => {
+    try {
+      const res = await api.get('/collections');
+      const list = (res.data.collections || []).map((c) => ({
+        id: c.id || c.slug,
+        label: c.name,
+        category: c.name,
+      }));
+      setCollections(list);
+    } catch (err) {
+      console.error(err);
+      setCollections([]);
     }
   };
 
@@ -102,12 +108,12 @@ export default function Inventory() {
         tagline: product.tagline || '',
         price: product.price || 0,
         compareAt: product.compareAt || '',
-        collection: product.collection || 'karrupu-edition',
+        collection: product.collection || '',
         category: product.category || '',
         badge: product.badge || '',
         willow: product.willow || '',
         weight: product.weight || '',
-        madeIn: product.madeIn || 'Tamil Nadu, India',
+        madeIn: product.madeIn || '',
         description: product.description || '',
         features: Array.isArray(product.features) ? product.features.join('\n') : '',
         images: product.images ? product.images.join(', ') : '',
@@ -135,7 +141,7 @@ export default function Inventory() {
     setFormData((prev) => {
       const next = { ...prev, [name]: type === 'checkbox' ? checked : value };
       if (name === 'collection') {
-        const match = COLLECTIONS.find((c) => c.id === value);
+        const match = collections.find((c) => c.id === value);
         if (match) next.category = match.category;
       }
       return next;
@@ -475,13 +481,25 @@ export default function Inventory() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.9rem' }}>
                 <div>
                   <label style={labelStyle}>Collection *</label>
-                  <select name="collection" value={formData.collection} onChange={handleFormChange} style={inputStyle}>
-                    {COLLECTIONS.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
+                  {collections.length ? (
+                    <select name="collection" value={formData.collection} onChange={handleFormChange} style={inputStyle} required>
+                      <option value="">Select collection</option>
+                      {collections.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      required
+                      name="collection"
+                      value={formData.collection}
+                      onChange={handleFormChange}
+                      placeholder="collection-id (from DB)"
+                      style={inputStyle}
+                    />
+                  )}
                 </div>
                 <div>
                   <label style={labelStyle}>Category label *</label>
