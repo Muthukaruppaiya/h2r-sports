@@ -110,6 +110,7 @@ function sanitizeProductInput(body, { isCreate = false } = {}) {
 
 // ─── Express app ─────────────────────────────────────────────────────────────
 const app = express();
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json());
 
@@ -971,8 +972,12 @@ app.post('/api/admin/upload', protect, admin, (req, res) => {
         }))
       );
 
-      // Stable relative URLs — frontend prefixes Render origin
-      const urls = docs.map((doc) => `/api/media/${doc._id}`);
+      // Prefer absolute Render URLs so Netlify admin previews work immediately
+      const publicOrigin = (
+        process.env.PUBLIC_API_URL ||
+        `${req.get('x-forwarded-proto') || req.protocol}://${req.get('host')}`
+      ).replace(/\/$/, '');
+      const urls = docs.map((doc) => `${publicOrigin}/api/media/${doc._id}`);
       res.json({ ok: true, urls });
     } catch (e) {
       console.error('Image upload error:', e);
@@ -987,17 +992,28 @@ app.get('/api/media/:id', async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(404).json({ error: 'Image not found' });
     }
-    const doc = await Media.findById(req.params.id).lean();
+
+    // Do not use lean() — Binary buffers need the Mongoose Buffer type
+    const doc = await Media.findById(req.params.id).select('+data');
     if (!doc?.data) return res.status(404).json({ error: 'Image not found' });
 
-    res.set({
-      'Content-Type': doc.contentType || 'application/octet-stream',
-      'Content-Length': doc.data.length,
-      'Cache-Control': 'public, max-age=31536000, immutable',
-    });
-    res.send(Buffer.from(doc.data.buffer || doc.data));
+    let buf = doc.data;
+    if (!Buffer.isBuffer(buf)) {
+      if (buf?.buffer) buf = Buffer.from(buf.buffer);
+      else if (Array.isArray(buf)) buf = Buffer.from(buf);
+      else buf = Buffer.from(buf);
+    }
+
+    res.status(200);
+    res.setHeader('Content-Type', doc.contentType || 'image/jpeg');
+    res.setHeader('Content-Length', String(buf.length));
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    return res.end(buf);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Media serve error:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message || 'Failed to load image' });
+    }
   }
 });
 

@@ -20,11 +20,22 @@ export function apiUrl(path = '') {
 /** Resolve product/media URLs for Netlify ↔ Render split hosting */
 export function mediaUrl(url) {
   if (!url) return '';
-  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+  if (url.startsWith('data:')) return url;
+
+  // Already a full URL — rewrite mistaken Netlify /api/media links to Render
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    try {
+      const u = new URL(url);
+      if (u.pathname.startsWith('/api/media/')) {
+        return `${API_ORIGIN}${u.pathname}`;
+      }
+    } catch {
+      /* ignore */
+    }
     return url;
   }
+
   const path = url.startsWith('/') ? url : `/${url}`;
-  // Uploads & marketing live on the API host (Render). Local public assets stay same-origin.
   if (
     path.startsWith('/products/uploads/') ||
     path.startsWith('/api/media/') ||
