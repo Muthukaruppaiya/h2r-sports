@@ -12,6 +12,7 @@ import Order from './models/Order.js';
 import Review from './models/Review.js';
 import User from './models/User.js';
 import MarketingSettings from './models/MarketingSettings.js';
+import Media from './models/Media.js';
 import { buildStatusUpdate, isValidStatus } from './utils/orderStatus.js';
 import { parseInstagramUrl } from './utils/instagram.js';
 import jwt from 'jsonwebtoken';
@@ -113,18 +114,17 @@ app.use(cors());
 app.use(express.json());
 
 // ─── Multer Config ───────────────────────────────────────────────────────────
-const uploadStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadPath = path.join(PRODUCTS_IMG_DIR, 'uploads');
-    if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true });
-    cb(null, uploadPath);
+// Product images go to MongoDB (survives Render restarts). Marketing still uses disk.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024, files: 5 },
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype?.startsWith('image/')) {
+      return cb(new Error('Only image files are allowed'));
+    }
+    cb(null, true);
   },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${Date.now()}-${Math.round(Math.random() * 1E9)}${ext}`);
-  }
 });
-const upload = multer({ storage: uploadStorage });
 
 const videoUploadStorage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -951,15 +951,51 @@ app.post('/api/admin/products', protect, admin, async (req, res) => {
   }
 });
 
-app.post('/api/admin/upload', protect, admin, upload.array('images', 5), (req, res) => {
-  try {
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ error: 'No files uploaded' });
+app.post('/api/admin/upload', protect, admin, (req, res) => {
+  upload.array('images', 5)(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ error: uploadErrorMessage(err, 'Image upload failed') });
     }
-    // Store absolute API URLs so Netlify can load images from Render
-    const origin = `${req.protocol}://${req.get('host')}`;
-    const urls = req.files.map((file) => `${origin}/products/uploads/${file.filename}`);
-    res.json({ ok: true, urls });
+    try {
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ error: 'No files uploaded' });
+      }
+
+      // Persist in MongoDB so images survive Render free-tier restarts
+      const docs = await Media.insertMany(
+        req.files.map((file) => ({
+          filename: file.originalname || 'image',
+          contentType: file.mimetype || 'image/jpeg',
+          size: file.size || 0,
+          data: file.buffer,
+        }))
+      );
+
+      // Stable relative URLs — frontend prefixes Render origin
+      const urls = docs.map((doc) => `/api/media/${doc._id}`);
+      res.json({ ok: true, urls });
+    } catch (e) {
+      console.error('Image upload error:', e);
+      res.status(500).json({ error: e.message || 'Image upload failed' });
+    }
+  });
+});
+
+/** Serve product images stored in MongoDB */
+app.get('/api/media/:id', async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+    const doc = await Media.findById(req.params.id).lean();
+    if (!doc?.data) return res.status(404).json({ error: 'Image not found' });
+
+    res.set({
+      'Content-Type': doc.contentType || 'application/octet-stream',
+      'Content-Length': doc.data.length,
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    });
+    res.send(Buffer.from(doc.data.buffer || doc.data));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

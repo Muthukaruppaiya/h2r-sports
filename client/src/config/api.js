@@ -27,6 +27,7 @@ export function mediaUrl(url) {
   // Uploads & marketing live on the API host (Render). Local public assets stay same-origin.
   if (
     path.startsWith('/products/uploads/') ||
+    path.startsWith('/api/media/') ||
     path.startsWith('/marketing/') ||
     path.startsWith('/frames/')
   ) {
