@@ -8,7 +8,8 @@
     "start": "node index.js",
     "seed": "node seed.js",
     "clear-catalog": "node clear-catalog.js",
-    "sync-collections": "node sync-collections.js"
+    "sync-collections": "node sync-collections.js",
+    "sync-reviews": "node sync-reviews.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

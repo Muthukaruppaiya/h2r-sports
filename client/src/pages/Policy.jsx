@@ -7,16 +7,16 @@ const POLICIES = {
     body: [
       `H2R Sports ships cricket bats across India from ${BRAND.address}.`,
       'Orders are typically dispatched within 1–2 business days. Delivery timelines vary by pin code (usually 3–7 days).',
-      'Free shipping applies on eligible prepaid and COD orders as shown at checkout. Tracking details are shared by WhatsApp/SMS once your order ships.',
+      'Free shipping applies on eligible prepaid orders as shown at checkout. Tracking details are shared by WhatsApp/SMS once your order ships.',
     ],
   },
   returns: {
     title: 'Return / Refund Policy',
     body: [
       'Unused bats in original packaging may be returned within 7 days of delivery if they arrive damaged or incorrect.',
-      'Bats showing match wear, oiling, knocking, or engraving are not eligible for return.',
-      'Approved refunds are processed to the original payment method (or store credit for COD) within 5–7 business days after inspection.',
-      'Warranty covers manufacturing defects for 6 months from delivery — contact support with photos for claim review.',
+      'Bats showing match wear, oiling, or knocking are not eligible for return.',
+      'Approved refunds are processed to the original payment method within 5–7 business days after inspection.',
+      'Warranty covers manufacturing defects on the bat handle for 6 months from delivery — contact support with photos for claim review.',
     ],
   },
   privacy: {
@@ -32,7 +32,7 @@ const POLICIES = {
     body: [
       `By shopping on ${BRAND.name} you agree that product photos are illustrative and natural wood grain may vary.`,
       'Prices are listed in Rs. and include GST unless otherwise stated.',
-      'We reserve the right to cancel suspicious or undeliverable COD orders and will notify you promptly.',
+      'We reserve the right to cancel suspicious or undeliverable orders and will notify you promptly.',
       `For disputes, contact ${BRAND.email} or ${BRAND.phone}.`,
     ],
   },

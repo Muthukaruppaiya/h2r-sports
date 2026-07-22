@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import api from '../api/client';
+import { BRAND } from '../utils/india';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -42,7 +43,13 @@ export default function Login() {
     <div className={`auth-page${isAdminLogin ? ' auth-page--admin' : ''}`}>
       <div className="auth-page__card">
         <div className="auth-page__brand">
-          <div className="auth-page__logo">H2R</div>
+          <img
+            src={BRAND.logo}
+            alt={`${BRAND.name} logo`}
+            width="56"
+            height="56"
+            className="auth-page__logo"
+          />
           <div>
             <p className="auth-page__eyebrow">{isAdminLogin ? 'Admin access' : 'Welcome back'}</p>
             <h1 className="auth-page__title">{isAdminLogin ? 'Admin Log In' : 'Log In'}</h1>

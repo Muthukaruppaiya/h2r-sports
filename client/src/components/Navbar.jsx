@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { useCart } from '../context/CartContext';
 import { BRAND } from '../utils/india';
 import { api } from '../api/store';
 
@@ -12,7 +11,6 @@ export default function Navbar() {
   const [results, setResults] = useState([]);
   const inputRef = useRef(null);
   const navigate = useNavigate();
-  const { count } = useCart();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -70,9 +68,9 @@ export default function Navbar() {
         <Link to="/" className="navbar__logo" onClick={close}>
           <img
             src={BRAND.logo}
-            alt={`${BRAND.name} logo`}
-            width="44"
-            height="44"
+            alt=""
+            width="52"
+            height="52"
             className="brand-logo brand-logo--nav"
           />
           <span>
@@ -85,17 +83,20 @@ export default function Navbar() {
           <NavLink to="/" end onClick={close}>
             Home
           </NavLink>
+          <NavLink to="/collections/killer-edition" onClick={close}>
+            Killer
+          </NavLink>
           <NavLink to="/collections/karrupu-edition" onClick={close}>
             Karrupu
           </NavLink>
-          <NavLink to="/collections/killer-edition" onClick={close}>
-            Killer
+          <NavLink to="/collections/beast-edition" onClick={close}>
+            Beast
           </NavLink>
           <NavLink to="/collections/stumper-edition" onClick={close}>
             Stumper
           </NavLink>
           <NavLink to="/collections/soft-tennis-kerala-scoop" onClick={close}>
-            Kerala Scoop
+            Soft Tennis
           </NavLink>
           <NavLink to="/shop" onClick={close}>
             All Products
@@ -118,10 +119,6 @@ export default function Navbar() {
               <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </button>
-          <Link to="/cart" className="navbar__cart" onClick={close}>
-            Cart
-            {count > 0 && <span className="navbar__cart-count">{count}</span>}
-          </Link>
         </div>
 
         <button

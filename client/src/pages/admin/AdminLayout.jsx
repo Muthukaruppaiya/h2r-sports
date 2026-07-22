@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { BRAND } from '../../utils/india';
 
 const ICONS = {
   home: (
@@ -173,7 +174,13 @@ export default function AdminLayout() {
       <aside className={`zoho-admin__sidebar${sidebarOpen ? ' is-open' : ''}`}>
         <div className="zoho-admin__sidebar-head">
           <div className="zoho-admin__brand">
-            <div className="zoho-admin__brand-mark">H2R</div>
+            <img
+              src={BRAND.logo}
+              alt=""
+              width="40"
+              height="40"
+              className="zoho-admin__brand-mark"
+            />
             <div>
               <strong>H2R Admin</strong>
               <span>Commerce</span>

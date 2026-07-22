@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useCart } from '../context/CartContext';
 import { BRAND, formatINR, INDIAN_STATES } from '../utils/india';
 import { api } from '../api/store';
+import { clearBuyNowItem, getBuyNowItem } from '../utils/checkoutItem';
 
 const emptyForm = {
   name: '',
@@ -13,7 +13,7 @@ const emptyForm = {
   city: '',
   state: 'Tamil Nadu',
   pincode: '',
-  paymentMethod: 'cod',
+  paymentMethod: 'upi',
   upiId: '',
   cardName: '',
   cardNumber: '',
@@ -22,9 +22,8 @@ const emptyForm = {
 };
 
 export default function Checkout() {
-  const { items, total, clear } = useCart();
   const navigate = useNavigate();
-  
+  const [item, setItem] = useState(() => getBuyNowItem());
   const [form, setForm] = useState(() => {
     try {
       const userStr = localStorage.getItem('h2r_user');
@@ -32,30 +31,33 @@ export default function Checkout() {
         const user = JSON.parse(userStr);
         return { ...emptyForm, name: user.name || '', email: user.email || '', phone: user.phone || '' };
       }
-    } catch(e) {}
+    } catch (e) {
+      /* ignore */
+    }
     return emptyForm;
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  const total = item ? item.price * item.qty : 0;
   const shippingFee = 0;
   const payable = total + shippingFee;
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+  const canSubmit = useMemo(() => !!item && !submitting, [item, submitting]);
 
-  const canSubmit = useMemo(() => items.length > 0 && !submitting, [items.length, submitting]);
-
-  // Auth guard — redirect to login if not logged in
   useEffect(() => {
     const token = localStorage.getItem('h2r_token');
     if (!token) {
       navigate('/login?redirect=checkout', { replace: true });
+      return;
     }
+    setItem(getBuyNowItem());
   }, [navigate]);
 
   async function placeOrder(e) {
     e.preventDefault();
-    if (!canSubmit) return;
+    if (!canSubmit || !item) return;
     setError('');
     setSubmitting(true);
 
@@ -72,11 +74,13 @@ export default function Checkout() {
         state: form.state,
         pincode: form.pincode,
       },
-      items: items.map((i) => ({
-        id: i.id,
-        sizeId: i.sizeId,
-        qty: i.qty,
-      })),
+      items: [
+        {
+          id: item.id,
+          sizeId: item.sizeId,
+          qty: item.qty,
+        },
+      ],
       paymentMethod: form.paymentMethod,
       paymentMeta:
         form.paymentMethod === 'upi'
@@ -91,21 +95,21 @@ export default function Checkout() {
 
     try {
       const data = await api.createOrder(payload);
-      clear();
+      clearBuyNowItem();
       navigate(`/order/${data.order.id}`, { state: { order: data.order } });
-    } catch (err) {
-      setError(err.message || 'Could not place order');
+    } catch {
+      setError('Could not place order. Please try again.');
     } finally {
       setSubmitting(false);
     }
   }
 
-  if (items.length === 0) {
+  if (!item) {
     return (
       <main className="checkout">
         <div className="container checkout__empty">
-          <h1>Your bag is empty</h1>
-          <p>Add a bat before checkout.</p>
+          <h1>No product selected</h1>
+          <p>Choose a bat and tap Buy now to checkout.</p>
           <Link to="/shop" className="btn btn--primary">
             Browse bats
           </Link>
@@ -120,7 +124,7 @@ export default function Checkout() {
         <form className="checkout__form" onSubmit={placeOrder}>
           <h1>Checkout</h1>
           <p className="checkout__lead">
-            Complete your details — {BRAND.name} ships all over India.
+            Prepaid order for {BRAND.name}. Pay with UPI or card — shipping is free across India.
           </p>
 
           {error && <div className="checkout__error">{error}</div>}
@@ -130,50 +134,28 @@ export default function Checkout() {
             <div className="checkout__grid2">
               <label>
                 Full name *
-                <input required value={form.name} onChange={set('name')} placeholder="As on package" />
+                <input required value={form.name} onChange={set('name')} />
               </label>
               <label>
-                Mobile *
-                <input
-                  required
-                  inputMode="numeric"
-                  maxLength={10}
-                  value={form.phone}
-                  onChange={set('phone')}
-                  placeholder="10-digit mobile"
-                />
+                Phone *
+                <input required inputMode="tel" value={form.phone} onChange={set('phone')} />
               </label>
             </div>
             <label>
               Email *
-              <input
-                required
-                type="email"
-                value={form.email}
-                onChange={set('email')}
-                placeholder="for order updates"
-              />
+              <input required type="email" value={form.email} onChange={set('email')} />
             </label>
           </section>
 
           <section className="checkout__section">
-            <h2>2. Shipping address</h2>
+            <h2>2. Shipping</h2>
             <label>
               Address line 1 *
-              <input
-                required
-                value={form.addressLine1}
-                onChange={set('addressLine1')}
-                placeholder="House / street"
-              />
+              <input required value={form.addressLine1} onChange={set('addressLine1')} />
             </label>
             <label>
               Address line 2
-              <input
-                value={form.addressLine2}
-                onChange={set('addressLine2')}
-                placeholder="Landmark (optional)"
-              />
+              <input value={form.addressLine2} onChange={set('addressLine2')} />
             </label>
             <div className="checkout__grid2">
               <label>
@@ -207,11 +189,13 @@ export default function Checkout() {
             <h2>3. Payment</h2>
             <div className="pay-options">
               {[
-                { id: 'cod', label: 'Cash on Delivery', hint: 'Pay when bat arrives' },
                 { id: 'upi', label: 'UPI', hint: 'GPay / PhonePe / Paytm' },
                 { id: 'card', label: 'Debit / Credit Card', hint: 'Demo card checkout' },
               ].map((opt) => (
-                <label key={opt.id} className={`pay-option${form.paymentMethod === opt.id ? ' pay-option--active' : ''}`}>
+                <label
+                  key={opt.id}
+                  className={`pay-option${form.paymentMethod === opt.id ? ' pay-option--active' : ''}`}
+                >
                   <input
                     type="radio"
                     name="payment"
@@ -279,35 +263,30 @@ export default function Checkout() {
                   </label>
                 </div>
                 <p className="checkout__note">
-                  Demo mode — card is not charged to a live gateway yet (Razorpay can be connected later).
+                  Demo mode — card is not charged to a live gateway yet (Razorpay can be connected
+                  later).
                 </p>
               </div>
             )}
           </section>
 
           <button type="submit" className="btn btn--primary btn--full" disabled={!canSubmit}>
-            {submitting
-              ? 'Placing order…'
-              : form.paymentMethod === 'cod'
-                ? `Place COD order — ${formatINR(payable)}`
-                : `Pay ${formatINR(payable)} & place order`}
+            {submitting ? 'Placing order…' : `Pay ${formatINR(payable)} & place order`}
           </button>
         </form>
 
         <aside className="checkout__summary">
           <h2>Order summary</h2>
           <ul>
-            {items.map((item) => (
-              <li key={item.key}>
-                <div>
-                  <strong>{item.name}</strong>
-                  <span>
-                    {item.sizeLabel} × {item.qty}
-                  </span>
-                </div>
-                <span>{formatINR(item.price * item.qty)}</span>
-              </li>
-            ))}
+            <li key={item.key}>
+              <div>
+                <strong>{item.name}</strong>
+                <span>
+                  {item.sizeLabel} × {item.qty}
+                </span>
+              </div>
+              <span>{formatINR(item.price * item.qty)}</span>
+            </li>
           </ul>
           <div className="checkout__totals">
             <div>

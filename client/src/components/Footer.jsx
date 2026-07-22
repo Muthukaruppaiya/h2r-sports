@@ -12,8 +12,8 @@ export default function Footer() {
             <img
               src={BRAND.logo}
               alt={`${BRAND.name} logo`}
-              width="40"
-              height="40"
+              width="48"
+              height="48"
               className="brand-logo brand-logo--footer"
             />
             {BRAND.name}
@@ -42,10 +42,11 @@ export default function Footer() {
         <nav className="footer__links">
           <div className="footer__col">
             <h3>Shop</h3>
-            <Link to="/collections/karrupu-edition">Karrupu Edition</Link>
             <Link to="/collections/killer-edition">Killer Edition</Link>
+            <Link to="/collections/karrupu-edition">Karrupu Edition</Link>
+            <Link to="/collections/beast-edition">Beast Edition</Link>
             <Link to="/collections/stumper-edition">Stumper Edition</Link>
-            <Link to="/collections/soft-tennis-kerala-scoop">Kerala Scoop</Link>
+            <Link to="/collections/soft-tennis-kerala-scoop">Soft Tennis · Kerala Scoop</Link>
             <Link to="/shop">All Products</Link>
           </div>
           <div className="footer__col">
@@ -70,7 +71,7 @@ export default function Footer() {
           <span className="footer__pay-badge">UPI</span>
           <span className="footer__pay-badge">Visa</span>
           <span className="footer__pay-badge">Mastercard</span>
-          <span className="footer__pay-badge">COD</span>
+          <span className="footer__pay-badge">NetBanking</span>
         </div>
       </div>
 

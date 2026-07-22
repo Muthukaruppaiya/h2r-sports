@@ -1,14 +1,16 @@
 import { useEffect } from 'react';
 import { Routes, Route, useLocation, Link, useSearchParams } from 'react-router-dom';
-import AnnouncementBar from './components/AnnouncementBar';import Navbar from './components/Navbar';
+import AnnouncementBar from './components/AnnouncementBar';
+import Navbar from './components/Navbar';
 import Footer from './components/Footer';
-import CartToast from './components/CartToast';
-import WatchBuyVideo from './components/WatchBuyVideo';
+import WhatsAppStatusBar from './components/WhatsAppStatusBar';
+import FloatDock from './components/FloatDock';
+import ScrollProgress from './components/ScrollProgress';
+import { BRAND } from './utils/india';
 import Home from './pages/Home';
 import Shop from './pages/Shop';
 import Collection from './pages/Collection';
 import ProductDetail from './pages/ProductDetail';
-import Cart from './pages/Cart';
 import Checkout from './pages/Checkout';
 import OrderSuccess from './pages/OrderSuccess';
 import MyOrders from './pages/MyOrders';
@@ -58,7 +60,6 @@ export default function App() {
   const hideVideo =
     pathname.startsWith('/checkout') ||
     pathname.startsWith('/order') ||
-    pathname.startsWith('/cart') ||
     isProductDetail ||
     isAdmin;
 
@@ -69,7 +70,13 @@ export default function App() {
         <div className="auth-page auth-page--denied">
           <div className="auth-page__card">
             <div className="auth-page__brand">
-              <div className="auth-page__logo">H2R</div>
+            <img
+              src={BRAND.logo}
+              alt={`${BRAND.name} logo`}
+              width="56"
+              height="56"
+              className="auth-page__logo"
+            />
               <div>
                 <p className="auth-page__eyebrow">Admin panel</p>
                 <h1 className="auth-page__title">Access denied</h1>
@@ -88,7 +95,7 @@ export default function App() {
         </div>
       );
     }
-    
+
     return (
       <Routes>
         <Route path="/admin" element={<AdminLayout />}>
@@ -115,16 +122,16 @@ export default function App() {
   return (
     <>
       <ScrollLock />
+      <ScrollProgress />
       <AnnouncementBar />
+      <WhatsAppStatusBar />
       <Navbar />
-      <CartToast />
       <PageShell>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/shop" element={<Shop />} />
           <Route path="/collections/:slug" element={<Collection />} />
           <Route path="/shop/:id" element={<ProductDetail />} />
-          <Route path="/cart" element={<Cart />} />
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/order/:id" element={<OrderSuccess />} />
           <Route path="/my-orders" element={<MyOrders />} />
@@ -134,7 +141,7 @@ export default function App() {
         </Routes>
       </PageShell>
       <Footer />
-      {!hideVideo && <WatchBuyVideo />}
+      <FloatDock showVideo={!hideVideo} />
     </>
   );
 }

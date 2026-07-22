@@ -1,12 +1,17 @@
 import { BRAND, formatINR } from '../utils/india';
 
+function waLink(text) {
+  return `https://wa.me/${BRAND.whatsapp}?text=${encodeURIComponent(text)}`;
+}
+
+/** Product buy / shopping redirect on WhatsApp */
 export function buildWhatsAppOrderUrl({ product, size, qty = 1, pageUrl }) {
   const total = formatINR(size.price * qty);
   const lines = [
-    `Hi ${BRAND.name}! 👋`,
+    `Hi ${BRAND.name}!`,
     `I want to buy this bat:`,
     ``,
-    `🏏 *${product.name}*`,
+    `*${product.name}*`,
     `Size: ${size.label}`,
     `Qty: ${qty}`,
     `Price: ${total}`,
@@ -16,6 +21,13 @@ export function buildWhatsAppOrderUrl({ product, size, qty = 1, pageUrl }) {
     `Please confirm availability & delivery.`,
   ].filter(Boolean);
 
-  const text = encodeURIComponent(lines.join('\n'));
-  return `https://wa.me/${BRAND.whatsapp}?text=${text}`;
+  return waLink(lines.join('\n'));
+}
+
+/** General enquiry from floating WhatsApp button */
+export function buildWhatsAppEnquiryUrl(message) {
+  const text =
+    message ||
+    `Hi ${BRAND.name}! I want to enquire about your cricket bats. Please help me choose.`;
+  return waLink(text);
 }

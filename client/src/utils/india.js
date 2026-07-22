@@ -5,10 +5,10 @@ export const BRAND = {
   tagline: 'Tamil Nadu Cricket Bats',
   instagram: 'https://www.instagram.com/h2r_sports_/',
   instagramHandle: '@h2r_sports_',
-  logo: '/h2r-logo.png',
-  phone: '+91 98765 43210',
+  logo: '/h2r-crest.png',
+  phone: '+91 93618 13878',
   email: 'orders@h2rsports.in',
-  whatsapp: '919876543210',
+  whatsapp: '919361813878',
   address: 'Tamil Nadu, India',
   facebook: 'https://www.facebook.com/',
   youtube: 'https://www.youtube.com/',
@@ -20,7 +20,7 @@ export const BRAND = {
   currency: 'INR',
   gstNote: 'Inclusive of GST',
   shippingNote: 'All India Free Shipping',
-  returnsNote: '6 months bat warranty · COD available',
+  returnsNote: '6 months handle warranty · Prepaid orders',
 };
 
 export function formatINR(amount) {

@@ -14,7 +14,7 @@ export default function OrderSuccess() {
     api
       .getOrder(id)
       .then(setOrder)
-      .catch((err) => setError(err.message));
+      .catch(() => setError('We could not load this order. Please try again.'));
   }, [id, order]);
 
   if (error) {
@@ -41,11 +41,11 @@ export default function OrderSuccess() {
   }
 
   const payLabel =
-    order.paymentMethod === 'cod'
-      ? 'Cash on Delivery'
-      : order.paymentMethod === 'upi'
-        ? `UPI (${order.paymentMeta?.upiId || ''})`
-        : `Card ending ${order.paymentMeta?.cardLast4 || '****'}`;
+    order.paymentMethod === 'upi'
+      ? `UPI (${order.paymentMeta?.upiId || ''})`
+      : order.paymentMethod === 'card'
+        ? `Card ending ${order.paymentMeta?.cardLast4 || '****'}`
+        : String(order.paymentMethod || 'Prepaid').toUpperCase();
 
   return (
     <main className="checkout">
@@ -53,10 +53,7 @@ export default function OrderSuccess() {
         <div className="order-success__badge">Order confirmed</div>
         <h1>Thank you, {order.customer.name}!</h1>
         <p>
-          Your {BRAND.name} order <strong>{order.id}</strong> is placed.
-          {order.paymentMethod === 'cod'
-            ? ' Pay cash when your bat is delivered.'
-            : ' Payment received (demo).'}
+          Your {BRAND.name} order <strong>{order.id}</strong> is placed. Payment received (demo).
         </p>
 
         <div className="order-success__grid">

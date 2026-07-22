@@ -13,28 +13,60 @@ const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/h2r-sports
 
 const COLLECTIONS = [
   {
-    id: 'karrupu-edition',
-    name: 'H2R Karrupu Edition',
-    slug: 'karrupu-edition',
-    blurb: 'Premium black edition bats — powerful pickup, sharp finish, built for hard-hitting cricket.',
-  },
-  {
     id: 'killer-edition',
     name: 'Killer Edition',
     slug: 'killer-edition',
-    blurb: 'Aggressive profile bats engineered for big hitting and match-day dominance.',
+    family: 'hard-tennis',
+    familyLabel: 'Hard Tennis',
+    variant: 'Killer',
+    blurb: 'Fast-selling hard tennis power bat — aggressive profile for big hitting.',
+    badge: 'Fast selling',
+    featured: true,
+    sortOrder: 1,
+  },
+  {
+    id: 'karrupu-edition',
+    name: 'Karrupu Edition',
+    slug: 'karrupu-edition',
+    family: 'hard-tennis',
+    familyLabel: 'Hard Tennis',
+    variant: 'Karrupu',
+    blurb: 'Premium black hard tennis edition — powerful pickup and sharp finish.',
+    featured: false,
+    sortOrder: 2,
+  },
+  {
+    id: 'beast-edition',
+    name: 'Beast Edition',
+    slug: 'beast-edition',
+    family: 'hard-tennis',
+    familyLabel: 'Hard Tennis',
+    variant: 'Beast',
+    blurb: 'Heavy-hitting hard tennis beast — built for punch and presence.',
+    featured: false,
+    sortOrder: 3,
   },
   {
     id: 'stumper-edition',
     name: 'Stumper Edition',
     slug: 'stumper-edition',
-    blurb: 'Balanced bats for control, timing, and clean middle — trusted all-round performance.',
+    family: 'hard-tennis',
+    familyLabel: 'Hard Tennis',
+    variant: 'Stumper',
+    blurb: 'Balanced hard tennis control — timing, middle, and all-round play.',
+    featured: false,
+    sortOrder: 4,
   },
   {
     id: 'soft-tennis-kerala-scoop',
-    name: 'Soft Tennis Bat [ Kerala Scoop ]',
+    name: 'Kerala Scoop',
     slug: 'soft-tennis-kerala-scoop',
-    blurb: 'Kerala scoop soft tennis bats — light hands, wide sweet spot, precision stroke play.',
+    family: 'soft-tennis',
+    familyLabel: 'Soft Tennis',
+    variant: 'Kerala Scoop',
+    blurb: 'Soft tennis Kerala scoop — light hands, wide sweet spot, clean strokes.',
+    featured: false,
+    sortOrder: 5,
   },
 ];
 
@@ -52,7 +84,7 @@ const PRODUCTS = [
       { id: 'lh', label: 'Long Handle (LH)', price: 2899 },
     ],
     description: 'Hard tennis power bat with aggressive profile — bestseller balance for gully and club tennis-ball cricket.',
-    features: ['All India free shipping', 'COD available', '6 months bat warranty', 'Free cover on prepaid*'],
+    features: ['All India free shipping', '6 months handle warranty', 'Free premium cover'],
     images: ['/batimages/bat1.webp', '/batimages/bat2.webp', '/batimages/bat3.jpg', '/batimages/bat4.jpg']
   },
   {
@@ -68,7 +100,7 @@ const PRODUCTS = [
       { id: 'lh', label: 'Long Handle (LH)', price: 3599 },
     ],
     description: 'Advance scoop profile with serious sweet-spot punch — a customer favourite for hard tennis ball.',
-    features: ['All India free shipping', 'COD available', '6 months bat warranty', 'Pre-oiled & pressed'],
+    features: ['All India free shipping', '6 months handle warranty', 'Pre-oiled & pressed'],
     images: ['/batimages/bat2.webp']
   },
   {
@@ -84,7 +116,7 @@ const PRODUCTS = [
       { id: 'lh', label: 'Long Handle (LH)', price: 6199 },
     ],
     description: 'Premium hard tennis edition with elite finish and pick-up for power hitters.',
-    features: ['Free engraving on prepaid*', '6 months warranty', 'COD available', 'Pan-India delivery'],
+    features: ['6 months handle warranty', 'Pan-India delivery'],
     images: ['/batimages/bat3.jpg']
   },
   {
@@ -100,7 +132,7 @@ const PRODUCTS = [
       { id: 'lh', label: 'Long Handle (LH)', price: 2399 },
     ],
     description: 'Sharp pickup hard tennis bat — everyday net and match companion.',
-    features: ['COD available', 'All India shipping', '6 months warranty'],
+    features: ['All India shipping', '6 months handle warranty'],
     images: ['/batimages/bat4.jpg']
   },
   {
@@ -116,7 +148,7 @@ const PRODUCTS = [
       { id: 'lh', label: 'Long Handle (LH)', price: 2899 },
     ],
     description: 'Gold edition styling with Wolverine balance and punch.',
-    features: ['COD available', 'Free cover on prepaid*', '6 months warranty'],
+    features: ['Free premium cover', '6 months handle warranty'],
     images: ['/batimages/bat5.jpg']
   },
   {
@@ -132,7 +164,7 @@ const PRODUCTS = [
       { id: 'lh', label: 'Long Handle (LH)', price: 4599 },
     ],
     description: 'Aggressive hard tennis profile built for big hitting.',
-    features: ['6 months warranty', 'COD available', 'Pan-India delivery'],
+    features: ['6 months handle warranty', 'Pan-India delivery'],
     images: ['/batimages/bat6.webp']
   },
   {
@@ -148,7 +180,7 @@ const PRODUCTS = [
       { id: 'lh', label: 'Long Handle (LH)', price: 3399 },
     ],
     description: 'Soft tennis edition tuned for timing and soft-ball bounce.',
-    features: ['COD available', '6 months warranty', 'All India shipping'],
+    features: ['6 months handle warranty', 'All India shipping'],
     images: ['/batimages/bat7.jpg']
   },
   {
@@ -164,7 +196,7 @@ const PRODUCTS = [
       { id: 'lh', label: 'Long Handle (LH)', price: 3099 },
     ],
     description: 'Precision soft tennis bat — light hands, clean middle.',
-    features: ['Free gloves offer*', 'COD available', '6 months warranty'],
+    features: ['6 months handle warranty'],
     images: ['/batimages/bat8.jpg']
   },
   {
@@ -181,7 +213,7 @@ const PRODUCTS = [
       { id: 'full', label: 'Full Size (Adult)', price: 4499 },
     ],
     description: 'Match-ready English willow season bat — pressed, oiled, and sized for Indian leather-ball cricket.',
-    features: ['All India free shipping', '6 months warranty', 'COD available', 'GST included'],
+    features: ['All India free shipping', '6 months handle warranty', 'GST included'],
     images: ['/batimages/bat9.jpg']
   },
   {
@@ -197,7 +229,7 @@ const PRODUCTS = [
       { id: 'lh', label: 'Long Handle (LH)', price: 9800 },
     ],
     description: 'Beast profile English willow for serious season cricket.',
-    features: ['Free engraving on prepaid*', '6 months warranty', 'Pan-India delivery'],
+    features: ['6 months handle warranty', 'Pan-India delivery'],
     images: ['/batimages/bat10.jpg']
   },
   {
@@ -214,7 +246,7 @@ const PRODUCTS = [
       { id: 'size-6', label: 'Size 6', price: 3299 },
     ],
     description: 'Top-grade Kashmir willow player edition for leather-ball season cricket.',
-    features: ['COD available', '6 months warranty', 'GST included'],
+    features: ['6 months handle warranty', 'GST included'],
     images: ['/batimages/bat1.webp']
   },
   {
@@ -232,7 +264,7 @@ const PRODUCTS = [
       { id: 'harrow', label: 'Harrow', price: 2699 },
     ],
     description: 'Junior season bat sized for school and academy leather-ball cricket.',
-    features: ['COD available', 'School kit ready', '6 months warranty'],
+    features: ['School kit ready', '6 months handle warranty'],
     images: ['/batimages/bat2.webp']
   },
 ];

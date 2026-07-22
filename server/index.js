@@ -391,16 +391,17 @@ app.get('/api/store-info', (_req, res) => {
     currency: 'INR',
     gstInclusive: true,
     freeShippingIndia: true,
-    supportPhone: '+91 98765 43210',
+    supportPhone: '+91 93618 13878',
     supportEmail: 'orders@h2rsports.in',
     address: 'Tamil Nadu, India',
-    payments: ['UPI', 'Cards', 'NetBanking', 'COD'],
+    payments: ['UPI', 'Cards', 'NetBanking'],
+    whatsapp: '919361813878',
+    whatsappLink: 'https://wa.me/919361813878',
     benefits: [
       'All India Free Shipping',
-      'Free premium cover & gloves worth ₹650*',
-      'Free engraving on prepaid orders',
-      '6 months full bat warranty',
-      'COD available',
+      'Free premium cover',
+      '6 months handle warranty',
+      'UPI & Cards accepted',
     ],
   });
 });
@@ -408,7 +409,7 @@ app.get('/api/store-info', (_req, res) => {
 // ─── Collections ──────────────────────────────────────────────────────────────
 app.get('/api/collections', async (_req, res) => {
   try {
-    const collections = await Collection.find().lean();
+    const collections = await Collection.find().sort({ sortOrder: 1, featured: -1 }).lean();
     const withCounts = await Promise.all(
       collections.map(async (col) => ({
         ...col,
@@ -467,7 +468,10 @@ app.get('/api/products/:id', async (req, res) => {
 // ─── Reviews ──────────────────────────────────────────────────────────────────
 app.get('/api/reviews', async (_req, res) => {
   try {
-    const reviews = await Review.find().lean();
+    const reviews = (await Review.find().sort({ createdAt: -1 }).lean()).map((r) => ({
+      ...r,
+      id: r.id || String(r._id),
+    }));
     res.json({ reviews });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -488,9 +492,9 @@ app.post('/api/orders', async (req, res) => {
   if (!/^\d{6}$/.test(String(shipping.pincode)))
     return res.status(400).json({ error: 'Enter a valid 6-digit PIN code' });
   if (!Array.isArray(items) || items.length === 0)
-    return res.status(400).json({ error: 'Cart is empty' });
-  if (!['cod', 'upi', 'card'].includes(paymentMethod))
-    return res.status(400).json({ error: 'Invalid payment method' });
+    return res.status(400).json({ error: 'No items to order' });
+  if (!['upi', 'card'].includes(paymentMethod))
+    return res.status(400).json({ error: 'Invalid payment method. Use UPI or card.' });
   if (paymentMethod === 'upi' && !paymentMeta?.upiId)
     return res.status(400).json({ error: 'UPI ID is required' });
   if (paymentMethod === 'card' && (!paymentMeta?.cardName || !paymentMeta?.cardLast4))
@@ -518,17 +522,17 @@ app.post('/api/orders', async (req, res) => {
     const shippingFee = 0;
     const total = subtotal + shippingFee;
 
-    const initialStatus = paymentMethod === 'cod' ? 'confirmed' : 'paid';
+    const initialStatus = 'paid';
     const now = new Date();
     const initialTimestamps = {
       confirmedAt: now,
-      ...(paymentMethod !== 'cod' ? { paidAt: now } : {}),
+      paidAt: now,
     };
 
     const order = await Order.create({
       orderId: makeOrderId(),
       status:        initialStatus,
-      paymentStatus: paymentMethod === 'cod' ? 'pending_cod' : 'paid',
+      paymentStatus: 'paid',
       statusTimestamps: initialTimestamps,
       statusHistory: [{
         to: initialStatus,
@@ -540,9 +544,7 @@ app.post('/api/orders', async (req, res) => {
       paymentMeta:
         paymentMethod === 'upi'
           ? { upiId: paymentMeta.upiId }
-          : paymentMethod === 'card'
-            ? { cardName: paymentMeta.cardName, cardLast4: String(paymentMeta.cardLast4).slice(-4) }
-            : { note: 'Cash on delivery' },
+          : { cardName: paymentMeta.cardName, cardLast4: String(paymentMeta.cardLast4).slice(-4) },
       customer: {
         name:  customer.name.trim(),
         phone: String(customer.phone).replace(/\s/g, ''),
@@ -837,7 +839,7 @@ app.get('/api/admin/reports/overview', protect, admin, async (req, res) => {
       return { status, count, pct: safePercent(count, totalOrders) };
     });
 
-    const paymentBreakdown = ['cod', 'upi', 'card'].map((method) => {
+    const paymentBreakdown = ['upi', 'card'].map((method) => {
       const count = orders.filter((o) => o.paymentMethod === method).length;
       return { method, count, pct: safePercent(count, totalOrders) };
     });

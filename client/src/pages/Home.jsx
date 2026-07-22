@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom';
 import CollectionGrid from '../components/CollectionGrid';
 import ProductRail from '../components/ProductRail';
 import TrustStrip from '../components/TrustStrip';
+import StatsStrip from '../components/StatsStrip';
 import Reviews from '../components/Reviews';
 import AnnouncementBar from '../components/AnnouncementBar';
 import WhatsAppStatusBar from '../components/WhatsAppStatusBar';
+import RevealOnScroll from '../components/RevealOnScroll';
 import { api } from '../api/store';
 
 export default function Home() {
@@ -14,7 +16,6 @@ export default function Home() {
   const [topSelling, setTopSelling] = useState([]);
   const [mostLoved, setMostLoved] = useState([]);
   const [reviews, setReviews] = useState([]);
-  const [benefits, setBenefits] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -22,11 +23,10 @@ export default function Home() {
 
     async function load() {
       try {
-        const [cols, all, revs, info] = await Promise.all([
+        const [cols, all, revs] = await Promise.all([
           api.getCollections(),
           api.getProducts(),
           api.getReviews(),
-          api.getStoreInfo(),
         ]);
         if (cancelled) return;
 
@@ -36,9 +36,8 @@ export default function Home() {
         setTopSelling(products.filter((p) => p.topSelling));
         setMostLoved(products.filter((p) => p.mostLoved));
         setReviews(revs.reviews || []);
-        setBenefits(info.benefits || []);
       } catch {
-        /* ignore */
+        /* keep empty UI — never surface raw errors */
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -62,8 +61,9 @@ export default function Home() {
           />
           <div className="home-banner__scrim" />
         </div>
-        <div className="container home-banner__inner">
-          <p className="home-banner__eyebrow">H2R Sports</p>
+
+        <RevealOnScroll as="div" className="container home-banner__inner" stagger step={110}>
+          <p className="home-banner__eyebrow">H2R Sports · Tamil Nadu</p>
           <h1>India’s Trusted Cricket Bat Seller</h1>
           <p>
             Exclusive Hard Tennis, Soft Tennis &amp; Premium Willow Cricket Bats. Crafted for powerful
@@ -74,28 +74,62 @@ export default function Home() {
             <Link to="/shop" className="btn btn--primary">
               Shop all bats
             </Link>
-            {collections[0] && (
-              <Link to={`/collections/${collections[0].slug || collections[0].id}`} className="btn btn--outline">
-                {collections[0].name}
-              </Link>
-            )}
+            <Link to="/collections/killer-edition" className="btn btn--outline">
+              Shop Killer Edition
+            </Link>
           </div>
-        </div>
+          <div className="home-banner__badges">
+            <span className="home-banner__badge">
+              <strong>4.9★</strong> Average rating
+            </span>
+            <span className="home-banner__badge">
+              <strong>1,020+</strong> Happy customers
+            </span>
+            <span className="home-banner__badge">
+              <strong>2,000+</strong> Bats delivered
+            </span>
+          </div>
+        </RevealOnScroll>
+
+        <span className="home-banner__scroll-cue" aria-hidden="true">
+          <svg width="18" height="28" viewBox="0 0 18 28" fill="none">
+            <rect x="1" y="1" width="16" height="26" rx="8" stroke="currentColor" strokeWidth="1.4" />
+            <circle className="home-banner__scroll-dot" cx="9" cy="8" r="2.4" fill="currentColor" />
+          </svg>
+        </span>
       </section>
 
       <WhatsAppStatusBar />
 
+      <StatsStrip />
+
       <CollectionGrid collections={collections} />
-      <ProductRail title="Our Bats" products={featured} loading={loading} />
-      <AnnouncementBar variant="inline" />
-      <TrustStrip benefits={benefits} />
+
+      <RevealOnScroll className="reveal-section">
+        <ProductRail title="Our Bats" products={featured} loading={loading} />
+      </RevealOnScroll>
+
+      <RevealOnScroll className="reveal-section">
+        <AnnouncementBar variant="inline" />
+      </RevealOnScroll>
+
+      <TrustStrip />
+
       {topSelling.length > 0 && (
-        <ProductRail title="Top Selling" products={topSelling} loading={false} />
+        <RevealOnScroll className="reveal-section">
+          <ProductRail title="Top Selling" products={topSelling} loading={false} />
+        </RevealOnScroll>
       )}
+
       {mostLoved.length > 0 && (
-        <ProductRail title="Most Loved Bats" products={mostLoved} loading={false} />
+        <RevealOnScroll className="reveal-section">
+          <ProductRail title="Most Loved Bats" products={mostLoved} loading={false} />
+        </RevealOnScroll>
       )}
-      <Reviews reviews={reviews} />
+
+      <RevealOnScroll className="reveal-section">
+        <Reviews reviews={reviews} loading={loading} />
+      </RevealOnScroll>
     </main>
   );
 }

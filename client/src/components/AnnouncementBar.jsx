@@ -2,7 +2,7 @@ export default function AnnouncementBar({ variant = 'fixed' }) {
   const items = [
     '❤️ MOST LOVED CRICKET BATS — H2R SPORTS',
     '🚚 WE DELIVER ALL OVER INDIA',
-    '✔️ FREE SHIPPING · COD · UPI · CARDS',
+    '✔️ FREE SHIPPING · UPI · CARDS',
     '💯 TAMIL NADU CRICKET BATS',
   ];
 

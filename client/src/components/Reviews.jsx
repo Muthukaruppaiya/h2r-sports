@@ -10,7 +10,7 @@ function ReviewCard({ review }) {
       ) : null}
       <div className="review-card__body">
         <div className="review-card__stars" aria-hidden="true">
-          ★★★★★
+          {'★'.repeat(Math.min(5, Math.max(1, Number(review.rating) || 5)))}
         </div>
         <p>“{review.text}”</p>
         <cite>{review.name}</cite>
@@ -83,15 +83,37 @@ function MarqueeRow({ reviews, direction }) {
     >
       <div className="reviews-marquee__track">
         {loop.map((r, i) => (
-          <ReviewCard key={`${r.id}-${direction}-${i}`} review={r} />
+          <ReviewCard key={`${r._id || r.id || r.name}-${direction}-${i}`} review={r} />
         ))}
       </div>
     </div>
   );
 }
 
-export default function Reviews({ reviews }) {
-  if (!reviews?.length) return null;
+export default function Reviews({ reviews, loading = false }) {
+  if (loading) {
+    return (
+      <section className="reviews" aria-label="Customer reviews">
+        <div className="container">
+          <h2 className="rail__title">Why Players Choose H2R Sports</h2>
+          <p className="reviews__hint">Loading player reviews…</p>
+        </div>
+      </section>
+    );
+  }
+
+  if (!reviews?.length) {
+    return (
+      <section className="reviews" aria-label="Customer reviews">
+        <div className="container">
+          <h2 className="rail__title">Why Players Choose H2R Sports</h2>
+          <p className="reviews__hint">
+            Reviews will appear here once published. Trusted by players across India.
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   const mid = Math.ceil(reviews.length / 2);
   const rowLeft = reviews.slice(0, mid);

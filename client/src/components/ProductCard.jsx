@@ -1,30 +1,29 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useCart } from '../context/CartContext';
+import { Link, useNavigate } from 'react-router-dom';
 import { formatINR } from '../utils/india';
 import { mediaUrl } from '../config/api.js';
+import { setBuyNowItem } from '../utils/checkoutItem';
 
 export default function ProductCard({ product }) {
-  const { addItem } = useCart();
-  const [swapped, setSwapped] = useState(false);
+  const navigate = useNavigate();
   const defaultSize = product.sizes?.[0];
   const primary = mediaUrl(product.image || product.images?.[0] || '/products/placeholders/front.svg');
-  const secondary = mediaUrl(product.hoverImage || product.images?.[1] || primary);
-  const showSecondary = swapped && secondary !== primary;
   const imageCount = product.images?.length || 0;
+
+  const buyNow = () => {
+    setBuyNowItem({
+      id: product.id,
+      name: product.name,
+      sizeId: defaultSize?.id || 'default',
+      sizeLabel: defaultSize?.label || 'Standard',
+      price: defaultSize?.price || product.price,
+      qty: 1,
+    });
+    navigate('/checkout');
+  };
 
   return (
     <article className="product-card">
-      <Link
-        to={`/shop/${product.id}`}
-        className="product-card__media"
-        onMouseEnter={() => setSwapped(true)}
-        onMouseLeave={() => setSwapped(false)}
-        onTouchStart={() => setSwapped(true)}
-        onTouchEnd={() => {
-          window.setTimeout(() => setSwapped(false), 600);
-        }}
-      >
+      <Link to={`/shop/${product.id}`} className="product-card__media">
         {product.badge && <span className="product-card__badge">{product.badge}</span>}
         {imageCount > 1 && (
           <span className="product-card__pics">{Math.min(imageCount, 5)} photos</span>
@@ -32,23 +31,12 @@ export default function ProductCard({ product }) {
         <img
           src={primary}
           alt={product.name}
-          className={`product-card__img${showSecondary ? ' product-card__img--dim' : ''}`}
+          className="product-card__img"
           loading="lazy"
           onError={(e) => {
             e.currentTarget.src = '/products/placeholders/front.svg';
           }}
         />
-        {secondary !== primary && (
-          <img
-            src={secondary}
-            alt=""
-            aria-hidden="true"
-            className={`product-card__img product-card__img--hover${
-              showSecondary ? ' is-visible' : ''
-            }`}
-            loading="lazy"
-          />
-        )}
       </Link>
       <div className="product-card__body">
         <p className="product-card__vendor">H2R Sports</p>
@@ -61,21 +49,8 @@ export default function ProductCard({ product }) {
             <span className="product-card__compare">{formatINR(product.compareAt)}</span>
           )}
         </div>
-        <button
-          type="button"
-          className="btn btn--sm btn--full"
-          onClick={() =>
-            addItem({
-              id: product.id,
-              name: product.name,
-              sizeId: defaultSize?.id || 'default',
-              sizeLabel: defaultSize?.label || 'Standard',
-              price: defaultSize?.price || product.price,
-              qty: 1,
-            })
-          }
-        >
-          Add to bag
+        <button type="button" className="btn btn--sm btn--full" onClick={buyNow}>
+          Buy now
         </button>
       </div>
     </article>

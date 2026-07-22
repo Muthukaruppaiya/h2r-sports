@@ -22,7 +22,7 @@ export default function Collection() {
         setError('');
       })
       .catch(() => {
-        if (!cancelled) setError('Collection not found');
+        if (!cancelled) setError('This collection is unavailable right now.');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -45,9 +45,15 @@ export default function Collection() {
     <main className="shop-page">
       <div className="shop-hero">
         <div className="container">
-          <p className="home-banner__eyebrow">Collection</p>
+          <p className="home-banner__eyebrow">
+            {collection?.familyLabel || 'Collection'}
+            {collection?.variant ? ` · ${collection.variant}` : ''}
+          </p>
           <h1>{loading ? '…' : collection?.name}</h1>
           <p>{collection?.blurb}</p>
+          {collection?.badge ? (
+            <p className="shop-hero__badge">{collection.badge}</p>
+          ) : null}
         </div>
       </div>
       <div className="container shop-grid-wrap" style={{ paddingBottom: 80 }}>
