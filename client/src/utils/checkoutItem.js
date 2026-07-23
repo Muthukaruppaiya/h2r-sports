@@ -15,7 +15,9 @@ export function getBuyNowItem() {
       ...item,
       qty: Math.max(1, Number(item.qty) || 1),
       price: Number(item.price) || 0,
-      key: `${item.id}:${item.sizeId}`,
+      weightId: item.weightId || '',
+      weightLabel: item.weightLabel || '',
+      key: `${item.id}:${item.sizeId}:${item.weightId || 'na'}`,
     };
   } catch {
     return null;

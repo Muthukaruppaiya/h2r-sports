@@ -6,34 +6,39 @@ const POLICIES = {
     title: 'Shipping Policy',
     body: [
       `H2R Sports ships cricket bats across India from ${BRAND.address}.`,
-      'Orders are typically dispatched within 1–2 business days. Delivery timelines vary by pin code (usually 3–7 days).',
-      'Free shipping applies on eligible prepaid orders as shown at checkout. Tracking details are shared by WhatsApp/SMS once your order ships.',
+      'Orders are prepaid only. Cash on Delivery (COD) is not available.',
+      'Orders are typically dispatched within 1–2 business days. Delivery usually takes 3–7 days depending on your pin code.',
+      'Free shipping applies on eligible prepaid orders. Tracking details are shared by WhatsApp / SMS once your order ships.',
     ],
   },
   returns: {
-    title: 'Return / Refund Policy',
+    title: 'No Refund Policy',
     body: [
-      'Unused bats in original packaging may be returned within 7 days of delivery if they arrive damaged or incorrect.',
-      'Bats showing match wear, oiling, or knocking are not eligible for return.',
-      'Approved refunds are processed to the original payment method within 5–7 business days after inspection.',
-      'Warranty covers manufacturing defects on the bat handle for 6 months from delivery — contact support with photos for claim review.',
+      'All sales are final. H2R Sports does not offer refunds once an order is placed and payment is received.',
+      'Cash on Delivery (COD) is not available. Orders are accepted with prepaid payment via Razorpay (UPI / cards / netbanking).',
+      'Warranty: manufacturing defects on the bat handle are covered for 6 months from the date of delivery. Contact support with clear photos for warranty review.',
+      'Warranty does not cover normal wear, knocking, oiling, misuse, or damage after delivery.',
+      `For warranty support, contact ${BRAND.email} or ${BRAND.phone}.`,
+    ],
+  },
+  terms: {
+    title: 'Terms & Policies',
+    body: [
+      `By placing an order with ${BRAND.name}, you agree to the following:`,
+      '1. No refund — all sales are final after payment.',
+      '2. No COD — only prepaid payments via Razorpay (UPI / Cards / Netbanking) are accepted.',
+      '3. 6 months handle warranty — covers manufacturing defects on the bat handle only, from the date of delivery.',
+      'Product photos are illustrative. Natural wood grain and finish may vary slightly.',
+      'Prices are listed in Rs. and include GST unless otherwise stated.',
+      `For any questions, contact ${BRAND.email} or ${BRAND.phone}.`,
     ],
   },
   privacy: {
     title: 'Privacy Policy',
     body: [
-      'We collect name, phone, email, and shipping details only to fulfil orders and support.',
+      'We collect name, phone, email, and shipping details only to fulfil orders and provide support.',
       'Payment details entered at checkout are processed securely; we do not store full card numbers.',
       'We do not sell personal data. Contact us to update or delete your stored order contact details.',
-    ],
-  },
-  terms: {
-    title: 'Terms of Service',
-    body: [
-      `By shopping on ${BRAND.name} you agree that product photos are illustrative and natural wood grain may vary.`,
-      'Prices are listed in Rs. and include GST unless otherwise stated.',
-      'We reserve the right to cancel suspicious or undeliverable orders and will notify you promptly.',
-      `For disputes, contact ${BRAND.email} or ${BRAND.phone}.`,
     ],
   },
 };

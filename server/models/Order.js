@@ -6,9 +6,21 @@ const LineItemSchema = new mongoose.Schema(
     name:      { type: String, required: true },
     sizeId:    { type: String, required: true },
     sizeLabel: { type: String, required: true },
+    weightId:    { type: String, default: '' },
+    weightLabel: { type: String, default: '' },
     price:     { type: Number, required: true },
     qty:       { type: Number, required: true, min: 1 },
     lineTotal: { type: Number, required: true },
+  },
+  { _id: false }
+);
+
+const CourierSchema = new mongoose.Schema(
+  {
+    name: { type: String, default: '' },
+    trackingId: { type: String, default: '' },
+    trackingUrl: { type: String, default: '' },
+    notes: { type: String, default: '' },
   },
   { _id: false }
 );
@@ -23,20 +35,33 @@ const OrderSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['confirmed', 'paid', 'shipped', 'delivered', 'cancelled'],
-      default: 'confirmed',
+      enum: [
+        'ordered',
+        'accepted',
+        'packed',
+        'shipped',
+        'delivered',
+        'cancelled',
+        // legacy
+        'confirmed',
+        'paid',
+      ],
+      default: 'ordered',
     },
     paymentStatus: {
       type: String,
-      enum: ['pending_cod', 'paid', 'refunded'],
-      default: 'pending_cod',
+      enum: ['pending', 'pending_cod', 'paid', 'refunded', 'failed'],
+      default: 'pending',
     },
     paymentMethod: {
       type: String,
-      enum: ['cod', 'upi', 'card'],
+      enum: ['cod', 'upi', 'card', 'razorpay'],
       required: true,
     },
     paymentMeta: { type: mongoose.Schema.Types.Mixed, default: {} },
+    razorpayOrderId: { type: String, default: '', index: true },
+    razorpayPaymentId: { type: String, default: '' },
+    courier: { type: CourierSchema, default: () => ({}) },
     customer: {
       name:  { type: String, required: true },
       phone: { type: String, required: true },
@@ -53,13 +78,18 @@ const OrderSchema = new mongoose.Schema(
     currency:    { type: String, default: 'INR' },
     subtotal:    { type: Number, required: true },
     shippingFee: { type: Number, default: 0 },
+    discount:    { type: Number, default: 0 },
     total:       { type: Number, required: true },
     statusTimestamps: {
-      confirmedAt: { type: Date },
-      paidAt:      { type: Date },
+      orderedAt:   { type: Date },
+      acceptedAt:  { type: Date },
+      packedAt:    { type: Date },
       shippedAt:   { type: Date },
       deliveredAt: { type: Date },
       cancelledAt: { type: Date },
+      // legacy
+      confirmedAt: { type: Date },
+      paidAt:      { type: Date },
     },
     statusHistory: [{
       from:      { type: String },

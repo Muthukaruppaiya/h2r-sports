@@ -10,11 +10,20 @@ export default function ProductCard({ product }) {
   const imageCount = product.images?.length || 0;
 
   const buyNow = () => {
+    const defaultWeight = product.weights?.[0];
+    const weightLabel = defaultWeight
+      ? defaultWeight.label ||
+        (defaultWeight.from && defaultWeight.to
+          ? `${defaultWeight.from}g – ${defaultWeight.to}g`
+          : '')
+      : '';
     setBuyNowItem({
       id: product.id,
       name: product.name,
       sizeId: defaultSize?.id || 'default',
       sizeLabel: defaultSize?.label || 'Standard',
+      weightId: defaultWeight?.id || '',
+      weightLabel,
       price: defaultSize?.price || product.price,
       qty: 1,
     });

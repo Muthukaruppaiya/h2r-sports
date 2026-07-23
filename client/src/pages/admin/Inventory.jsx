@@ -1,6 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
-import { mediaUrl } from '../../config/api.js';
+import { API_ORIGIN, mediaUrl } from '../../config/api.js';
+
+function weightKey(w) {
+  return `${w?.from || ''}-${w?.to || ''}-${w?.label || ''}`;
+}
+
+function weightsMatch(sent = [], saved = []) {
+  if (sent.length !== saved.length) return false;
+  const a = [...sent].map(weightKey).sort();
+  const b = [...saved].map(weightKey).sort();
+  return a.every((key, i) => key === b[i]);
+}
 
 const EMPTY_FORM = {
   id: '',
@@ -16,30 +28,18 @@ const EMPTY_FORM = {
   madeIn: '',
   description: '',
   features: '',
-  images: '',
-  sizes: '',
+  imageList: [],
+  sizeRows: [{ id: '', label: '', price: '' }],
+  weightRanges: [{ from: '', to: '' }],
   inStock: true,
   topSelling: false,
   mostLoved: false,
 };
 
-const inputStyle = {
-  width: '100%',
-  padding: '0.55rem 0.65rem',
-  border: '1px solid #cbd5e1',
-  borderRadius: '6px',
-  fontSize: '0.9rem',
-};
-
-const labelStyle = {
-  display: 'block',
-  fontSize: '0.8rem',
-  fontWeight: 600,
-  marginBottom: '0.3rem',
-  color: '#334155',
-};
-
 export default function Inventory() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const tab = searchParams.get('tab') || 'products';
   const [products, setProducts] = useState([]);
   const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -47,6 +47,25 @@ export default function Inventory() {
   const [editingProduct, setEditingProduct] = useState(null);
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [uploading, setUploading] = useState(false);
+
+  const categories = useMemo(() => {
+    const map = new Map();
+    products.forEach((p) => {
+      const key = (p.category || 'Uncategorized').trim() || 'Uncategorized';
+      const row = map.get(key) || { name: key, products: 0, inStock: 0 };
+      row.products += 1;
+      if (p.inStock !== false) row.inStock += 1;
+      map.set(key, row);
+    });
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [products]);
+
+  const collectionRows = useMemo(() => {
+    return (collections || []).map((c) => {
+      const count = products.filter((p) => p.collection === c.id).length;
+      return { ...c, productCount: count };
+    });
+  }, [collections, products]);
 
   useEffect(() => {
     fetchProducts();
@@ -116,17 +135,27 @@ export default function Inventory() {
         madeIn: product.madeIn || '',
         description: product.description || '',
         features: Array.isArray(product.features) ? product.features.join('\n') : '',
-        images: product.images ? product.images.join(', ') : '',
-        sizes: product.sizes
-          ? product.sizes.map((s) => `${s.id}:${s.label}:${s.price}`).join(', ')
-          : '',
+        imageList: Array.isArray(product.images) ? product.images.filter(Boolean) : [],
+        sizeRows: product.sizes?.length
+          ? product.sizes.map((s) => ({
+              id: s.id || '',
+              label: s.label || '',
+              price: String(s.price ?? product.price ?? ''),
+            }))
+          : [{ id: '', label: '', price: String(product.price || '') }],
+        weightRanges: product.weights?.length
+          ? product.weights.map((w) => ({
+              from: w.from || '',
+              to: w.to || '',
+            }))
+          : [{ from: '', to: '' }],
         inStock: product.inStock !== false,
         topSelling: !!product.topSelling,
         mostLoved: !!product.mostLoved,
       });
     } else {
       setEditingProduct(null);
-      setFormData({ ...EMPTY_FORM });
+      setFormData({ ...EMPTY_FORM, sizeRows: [{ id: '', label: '', price: '' }] });
     }
     setIsModalOpen(true);
   };
@@ -160,12 +189,11 @@ export default function Inventory() {
     setUploading(true);
     try {
       const res = await api.post('/admin/upload', data);
-      if (res.data.urls) {
-        const currentImages = formData.images
-          ? formData.images.split(',').map((i) => i.trim()).filter(Boolean)
-          : [];
-        const newImages = [...currentImages, ...res.data.urls];
-        setFormData({ ...formData, images: newImages.join(', ') });
+      if (res.data.urls?.length) {
+        setFormData((prev) => ({
+          ...prev,
+          imageList: [...(prev.imageList || []), ...res.data.urls],
+        }));
       }
     } catch (err) {
       alert('Failed to upload images: ' + (err.message || ''));
@@ -178,9 +206,7 @@ export default function Inventory() {
   const handleSave = async (e) => {
     e.preventDefault();
     try {
-      const imagesArray = formData.images
-        ? formData.images.split(',').map((i) => i.trim()).filter(Boolean)
-        : [];
+      const imagesArray = (formData.imageList || []).map((i) => String(i).trim()).filter(Boolean);
       const featuresArray = formData.features
         ? formData.features
             .split('\n')
@@ -188,20 +214,19 @@ export default function Inventory() {
             .filter(Boolean)
         : [];
 
-      let sizesArray = [];
-      if (formData.sizes) {
-        sizesArray = formData.sizes
-          .split(',')
-          .map((s) => {
-            const parts = s.split(':');
-            return {
-              id: parts[0]?.trim(),
-              label: parts[1]?.trim(),
-              price: Number(parts[2]?.trim()) || Number(formData.price),
-            };
-          })
-          .filter((s) => s.id && s.label);
-      }
+      let sizesArray = (formData.sizeRows || [])
+        .map((row) => {
+          const id = String(row.id || '').trim() || String(row.label || '').trim().toLowerCase().replace(/\s+/g, '-');
+          const label = String(row.label || '').trim();
+          const price = Number(row.price);
+          if (!id || !label) return null;
+          return {
+            id,
+            label,
+            price: Number.isFinite(price) && price > 0 ? price : Number(formData.price) || 0,
+          };
+        })
+        .filter(Boolean);
 
       if (!sizesArray.length) {
         sizesArray = [
@@ -213,6 +238,47 @@ export default function Inventory() {
         ];
       }
 
+      const incompleteWeight = (formData.weightRanges || []).some((row) => {
+        const from = String(row.from || '').replace(/[^\d.]/g, '').trim();
+        const to = String(row.to || '').replace(/[^\d.]/g, '').trim();
+        return (from && !to) || (!from && to);
+      });
+      if (incompleteWeight) {
+        throw new Error('Fill both From and To for every weight range (e.g. 850 and 950)');
+      }
+
+      const incompleteSize = (formData.sizeRows || []).some((row) => {
+        const id = String(row.id || '').trim();
+        const label = String(row.label || '').trim();
+        const price = String(row.price || '').trim();
+        const any = id || label || price;
+        return any && (!label || !price);
+      });
+      if (incompleteSize) {
+        throw new Error('Each size needs Label and Price (ID auto-fills from label if empty)');
+      }
+
+      const weightsArray = (formData.weightRanges || [])
+        .map((row) => {
+          const from = String(row.from || '').replace(/[^\d.]/g, '').trim();
+          const to = String(row.to || '').replace(/[^\d.]/g, '').trim();
+          if (!from || !to) return null;
+          const fromNum = Number(from);
+          const toNum = Number(to);
+          if (!Number.isFinite(fromNum) || !Number.isFinite(toNum)) return null;
+          const lo = Math.min(fromNum, toNum);
+          const hi = Math.max(fromNum, toNum);
+          const fromStr = String(lo);
+          const toStr = String(hi);
+          return {
+            id: `${fromStr}-${toStr}`,
+            from: fromStr,
+            to: toStr,
+            label: `${fromStr}g – ${toStr}g`,
+          };
+        })
+        .filter(Boolean);
+
       const payload = {
         name: formData.name.trim(),
         tagline: formData.tagline.trim(),
@@ -222,7 +288,7 @@ export default function Inventory() {
         category: formData.category.trim(),
         badge: formData.badge.trim(),
         willow: formData.willow.trim(),
-        weight: formData.weight.trim(),
+        weight: formData.weight.trim() || weightsArray[0]?.label || '',
         madeIn: formData.madeIn.trim() || 'Tamil Nadu, India',
         description: formData.description.trim(),
         features: featuresArray,
@@ -231,15 +297,28 @@ export default function Inventory() {
         mostLoved: formData.mostLoved,
         images: imagesArray,
         sizes: sizesArray,
+        weights: weightsArray,
       };
 
+      let savedProduct = null;
       if (editingProduct) {
-        await api.put(`/admin/products/${editingProduct.id}`, payload);
+        const res = await api.put(`/admin/products/${editingProduct.id}`, payload);
+        savedProduct = res.data?.product;
       } else {
         const id = formData.id.trim().toLowerCase().replace(/\s+/g, '-');
         if (!id) throw new Error('Product ID is required');
-        await api.post('/admin/products', { ...payload, id });
+        const res = await api.post('/admin/products', { ...payload, id });
+        savedProduct = res.data?.product;
       }
+
+      const savedWeights = Array.isArray(savedProduct?.weights) ? savedProduct.weights : [];
+      if (!weightsMatch(weightsArray, savedWeights)) {
+        throw new Error(
+          `Weight ranges did not save on ${API_ORIGIN}. ` +
+            'Start/restart the local API (server folder: npm run dev), or deploy the updated server to Render.'
+        );
+      }
+
       closeModal();
       fetchProducts();
     } catch (err) {
@@ -247,437 +326,638 @@ export default function Inventory() {
     }
   };
 
-  if (loading) return <div>Loading inventory...</div>;
+  if (loading) return <div className="adm-empty">Loading inventory…</div>;
 
   return (
-    <div>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '1.5rem',
-          flexWrap: 'wrap',
-          gap: '1rem',
-        }}
-      >
+    <div className="adm-page">
+      <div className="adm-page__head">
         <div>
-          <h1 style={{ color: 'var(--navy)', margin: 0 }}>Inventory Management</h1>
+          <h1>Items</h1>
           <p style={{ margin: '0.35rem 0 0', color: '#64748b', fontSize: '0.9rem' }}>
-            Match WhatsApp catalog fields: name, price, compare price, willow, weight, sizes, features, images.
+            Catalogue products, categories, and collections. API: {API_ORIGIN}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => openModal()}
-          style={{
-            padding: '0.75rem 1.5rem',
-            background: 'var(--accent)',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontWeight: 'bold',
-          }}
-        >
-          + Add Product
-        </button>
+        {tab === 'products' && (
+          <div className="adm-page__actions">
+            <button type="button" className="adm-btn adm-btn--primary" onClick={() => openModal()}>
+              + Add Product
+            </button>
+          </div>
+        )}
       </div>
 
-      <div
-        style={{
-          background: 'white',
-          borderRadius: '12px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-          overflow: 'hidden',
-          overflowX: 'auto',
-        }}
-      >
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-          <thead>
-            <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-              <th style={{ padding: '1rem', color: '#475569', width: '60px' }}>Image</th>
-              <th style={{ padding: '1rem', color: '#475569' }}>Product</th>
-              <th style={{ padding: '1rem', color: '#475569' }}>Category</th>
-              <th style={{ padding: '1rem', color: '#475569' }}>Price</th>
-              <th style={{ padding: '1rem', color: '#475569' }}>Status</th>
-              <th style={{ padding: '1rem', color: '#475569' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {products.map((product) => (
-              <tr key={product.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '1rem' }}>
-                  <img
-                    src={mediaUrl(product.image || product.images?.[0])}
-                    alt={product.name}
-                    style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px', background: '#f1f5f9' }}
-                    onError={(e) => {
-                      e.currentTarget.src = '/products/placeholders/front.svg';
-                    }}
-                  />
-                </td>
-                <td style={{ padding: '1rem' }}>
-                  <div style={{ fontWeight: '600', color: 'var(--navy)' }}>{product.name}</div>
-                  <div style={{ fontSize: '0.85rem', color: '#64748b' }}>{product.id}</div>
-                </td>
-                <td style={{ padding: '1rem', color: '#475569' }}>{product.category}</td>
-                <td style={{ padding: '1rem', fontWeight: '500' }}>₹{product.price?.toLocaleString()}</td>
-                <td style={{ padding: '1rem' }}>
-                  <span
-                    style={{
-                      padding: '0.25rem 0.75rem',
-                      borderRadius: '999px',
-                      fontSize: '0.85rem',
-                      background: product.inStock ? '#dcfce7' : '#fee2e2',
-                      color: product.inStock ? '#166534' : '#991b1b',
-                    }}
-                  >
-                    {product.inStock ? 'In Stock' : 'Out of Stock'}
-                  </span>
-                </td>
-                <td style={{ padding: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    onClick={() => toggleStock(product)}
-                    style={{
-                      padding: '0.5rem',
-                      borderRadius: '4px',
-                      border: '1px solid #cbd5e1',
-                      background: 'white',
-                      cursor: 'pointer',
-                      fontSize: '0.85rem',
-                    }}
-                  >
-                    Stock
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openModal(product)}
-                    style={{
-                      padding: '0.5rem',
-                      borderRadius: '4px',
-                      border: '1px solid #cbd5e1',
-                      background: '#f8fafc',
-                      cursor: 'pointer',
-                      fontSize: '0.85rem',
-                    }}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(product.id)}
-                    style={{
-                      padding: '0.5rem',
-                      borderRadius: '4px',
-                      border: '1px solid #fecaca',
-                      background: '#fef2f2',
-                      color: '#dc2626',
-                      cursor: 'pointer',
-                      fontSize: '0.85rem',
-                    }}
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {products.length === 0 && (
-              <tr>
-                <td colSpan="6" style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
-                  No products found. Click “Add Product” and copy fields from WhatsApp catalog.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      <div className="adm-tabs">
+        {[
+          { id: 'products', label: 'Inventory', to: '/admin/inventory' },
+          { id: 'categories', label: 'Categories', to: '/admin/inventory?tab=categories' },
+          { id: 'collections', label: 'Collections', to: '/admin/inventory?tab=collections' },
+        ].map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={`adm-tabs__btn${tab === t.id || (t.id === 'products' && tab === 'products') ? ' is-active' : ''}`}
+            onClick={() => navigate(t.to)}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
+
+      {tab === 'categories' && (
+        <div className="adm-panel">
+          <div className="adm-panel__head">
+            <h2>Categories</h2>
+          </div>
+          {categories.length === 0 ? (
+            <div className="adm-empty">No categories yet — add products first.</div>
+          ) : (
+            <div className="adm-table-wrap">
+              <table className="adm-table">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th>Products</th>
+                    <th>In stock</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {categories.map((c) => (
+                    <tr key={c.name}>
+                      <td style={{ fontWeight: 700, color: '#0f172a' }}>{c.name}</td>
+                      <td>{c.products}</td>
+                      <td>{c.inStock}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'collections' && (
+        <div className="adm-panel">
+          <div className="adm-panel__head">
+            <h2>Collections</h2>
+          </div>
+          {collectionRows.length === 0 ? (
+            <div className="adm-empty">No collections found.</div>
+          ) : (
+            <div className="adm-table-wrap">
+              <table className="adm-table">
+                <thead>
+                  <tr>
+                    <th>Collection</th>
+                    <th>ID</th>
+                    <th>Products</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {collectionRows.map((c) => (
+                    <tr key={c.id}>
+                      <td style={{ fontWeight: 700, color: '#0f172a' }}>{c.label || c.name || c.id}</td>
+                      <td style={{ color: '#64748b' }}>{c.id}</td>
+                      <td>{c.productCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'products' && (
+        <div className="adm-panel">
+          <div className="adm-panel__head">
+            <h2>Products</h2>
+            <span style={{ color: '#64748b', fontSize: '0.85rem' }}>{products.length} items</span>
+          </div>
+          {products.length === 0 ? (
+            <div className="adm-empty">No products found. Click “Add Product” to create one.</div>
+          ) : (
+            <div className="adm-table-wrap">
+              <table className="adm-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: 56 }}>Image</th>
+                    <th>Product</th>
+                    <th>Category</th>
+                    <th>Price</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {products.map((product) => (
+                    <tr key={product.id}>
+                      <td>
+                        <img
+                          src={mediaUrl(product.image || product.images?.[0])}
+                          alt=""
+                          className="inv-thumb"
+                          onError={(e) => {
+                            e.currentTarget.src = '/products/placeholders/front.svg';
+                          }}
+                        />
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 700, color: '#0f172a' }}>{product.name}</div>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{product.id}</div>
+                      </td>
+                      <td>{product.category || '—'}</td>
+                      <td style={{ fontWeight: 600 }}>₹{Number(product.price || 0).toLocaleString()}</td>
+                      <td>
+                        <span className={`adm-pill ${product.inStock !== false ? 'adm-pill--ok' : 'adm-pill--bad'}`}>
+                          {product.inStock !== false ? 'In stock' : 'Out of stock'}
+                        </span>
+                      </td>
+                      <td>
+                        <div className="inv-row-actions">
+                          <button type="button" className="adm-btn adm-btn--ghost" onClick={() => toggleStock(product)}>
+                            Stock
+                          </button>
+                          <button type="button" className="adm-btn adm-btn--ghost" onClick={() => openModal(product)}>
+                            Edit
+                          </button>
+                          <button type="button" className="adm-btn adm-btn--danger" onClick={() => handleDelete(product.id)}>
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {isModalOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            padding: '1rem',
-          }}
-        >
-          <div
-            style={{
-              background: 'white',
-              padding: '1.5rem',
-              borderRadius: '12px',
-              width: '100%',
-              maxWidth: '680px',
-              maxHeight: '92vh',
-              overflowY: 'auto',
-            }}
+        <div className="adm-drawer-backdrop" onClick={closeModal} role="presentation">
+          <aside
+            className="adm-drawer inv-product-drawer"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={editingProduct ? 'Edit product' : 'Add product'}
           >
-            <h2 style={{ marginBottom: '0.35rem', color: 'var(--navy)' }}>
-              {editingProduct ? 'Edit Product' : 'Add Product'}
-            </h2>
-            <p style={{ margin: '0 0 1.25rem', color: '#64748b', fontSize: '0.85rem' }}>
-              Example: H2R Karrupu Edition — price 3300, compare 3500, willow Kashmir Willow, weight Under 1020g, sizes 35 & 36.
-            </p>
-
-            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.9rem' }}>
-                <div>
-                  <label style={labelStyle}>Product ID *</label>
-                  <input
-                    required
-                    name="id"
-                    value={formData.id}
-                    onChange={handleFormChange}
-                    disabled={!!editingProduct}
-                    placeholder="karrupu-edition"
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={labelStyle}>Name * (WhatsApp title)</label>
-                  <input
-                    required
-                    name="name"
-                    value={formData.name}
-                    onChange={handleFormChange}
-                    placeholder="H2R Karrupu Edition"
-                    style={inputStyle}
-                  />
-                </div>
+            <div className="adm-drawer__head">
+              <div>
+                <strong>{editingProduct ? 'Edit product' : 'Add product'}</strong>
+                <p className="inv-drawer-sub">
+                  {editingProduct ? editingProduct.id : 'Fill sections below — sizes & weights use row editors'}
+                </p>
               </div>
+              <button type="button" className="adm-btn adm-btn--ghost" onClick={closeModal}>
+                Close
+              </button>
+            </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.9rem' }}>
-                <div>
-                  <label style={labelStyle}>Sale Price * (₹)</label>
-                  <input
-                    required
-                    type="number"
-                    name="price"
-                    value={formData.price}
-                    onChange={handleFormChange}
-                    placeholder="3300"
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={labelStyle}>Compare / MRP (₹ strikethrough)</label>
-                  <input
-                    type="number"
-                    name="compareAt"
-                    value={formData.compareAt}
-                    onChange={handleFormChange}
-                    placeholder="3500"
-                    style={inputStyle}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.9rem' }}>
-                <div>
-                  <label style={labelStyle}>Collection *</label>
-                  {collections.length ? (
-                    <select name="collection" value={formData.collection} onChange={handleFormChange} style={inputStyle} required>
-                      <option value="">Select collection</option>
-                      {collections.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
+            <form className="adm-drawer__body inv-product-form" onSubmit={handleSave}>
+              <section className="inv-section">
+                <header className="inv-section__head">
+                  <h3>Basics</h3>
+                  <p>ID, name, pricing, and catalogue grouping</p>
+                </header>
+                <div className="adm-form-grid">
+                  <div className="adm-field">
+                    <label>Product ID *</label>
                     <input
                       required
-                      name="collection"
-                      value={formData.collection}
+                      name="id"
+                      value={formData.id}
                       onChange={handleFormChange}
-                      placeholder="collection-id (from DB)"
-                      style={inputStyle}
+                      disabled={!!editingProduct}
+                      placeholder="karrupu-edition"
                     />
-                  )}
-                </div>
-                <div>
-                  <label style={labelStyle}>Category label *</label>
-                  <input
-                    required
-                    name="category"
-                    value={formData.category}
-                    onChange={handleFormChange}
-                    style={inputStyle}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.9rem' }}>
-                <div>
-                  <label style={labelStyle}>Willow</label>
-                  <input
-                    name="willow"
-                    value={formData.willow}
-                    onChange={handleFormChange}
-                    placeholder="Premium Kashmir Willow"
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={labelStyle}>Weight</label>
-                  <input
-                    name="weight"
-                    value={formData.weight}
-                    onChange={handleFormChange}
-                    placeholder="Under 1020g"
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={labelStyle}>Made in</label>
-                  <input
-                    name="madeIn"
-                    value={formData.madeIn}
-                    onChange={handleFormChange}
-                    placeholder="Tamil Nadu, India"
-                    style={inputStyle}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label style={labelStyle}>Tagline / badge text</label>
-                <input
-                  name="tagline"
-                  value={formData.tagline}
-                  onChange={handleFormChange}
-                  placeholder="Premium Black Edition"
-                  style={inputStyle}
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Badge (optional)</label>
-                <input
-                  name="badge"
-                  value={formData.badge}
-                  onChange={handleFormChange}
-                  placeholder="Sale"
-                  style={inputStyle}
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Description</label>
-                <textarea
-                  name="description"
-                  value={formData.description}
-                  onChange={handleFormChange}
-                  rows={3}
-                  placeholder="Premium black edition hard tennis bat…"
-                  style={inputStyle}
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Features / details (one per line — from WhatsApp bullets)</label>
-                <textarea
-                  name="features"
-                  value={formData.features}
-                  onChange={handleFormChange}
-                  rows={6}
-                  placeholder={`Premium Black Edition Design\nUnder 1020g Weight\nAvailable in 35" & 36"\n10X Pressed for superior durability\nNatural Straight Grains\nPerfectly Well Balanced Pickup\nExcellent Curve for effortless stroke play\nBuilt for Hard-Hitting Performance\nPremium Kashmir Willow`}
-                  style={{ ...inputStyle, fontFamily: 'inherit', lineHeight: 1.45 }}
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Sizes (id:label:price, comma separated)</label>
-                <textarea
-                  name="sizes"
-                  value={formData.sizes}
-                  onChange={handleFormChange}
-                  rows={2}
-                  placeholder={'35:35":3300, 36:36":3300'}
-                  style={inputStyle}
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Images</label>
-                <textarea
-                  name="images"
-                  value={formData.images}
-                  onChange={handleFormChange}
-                  rows={2}
-                  placeholder="Upload below, or paste URLs: /batimages/bat1.webp, https://…"
-                  style={inputStyle}
-                />
-                <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-                  <input type="file" multiple accept="image/*" onChange={handleFileUpload} disabled={uploading} />
-                  {uploading && <span style={{ fontSize: '0.85rem', color: '#64748b' }}>Uploading…</span>}
-                </div>
-                {formData.images && (
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.65rem' }}>
-                    {formData.images.split(',').map((img) => img.trim()).filter(Boolean).map((img) => (
-                      <img
-                        key={img}
-                        src={mediaUrl(img)}
-                        alt=""
-                        style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6, border: '1px solid #e2e8f0' }}
+                  </div>
+                  <div className="adm-field">
+                    <label>Name *</label>
+                    <input
+                      required
+                      name="name"
+                      value={formData.name}
+                      onChange={handleFormChange}
+                      placeholder="H2R Karrupu Edition"
+                    />
+                  </div>
+                  <div className="adm-field">
+                    <label>Sale price (₹) *</label>
+                    <input
+                      required
+                      type="number"
+                      name="price"
+                      value={formData.price}
+                      onChange={handleFormChange}
+                      placeholder="3300"
+                      min="0"
+                    />
+                  </div>
+                  <div className="adm-field">
+                    <label>Compare / MRP (₹)</label>
+                    <input
+                      type="number"
+                      name="compareAt"
+                      value={formData.compareAt}
+                      onChange={handleFormChange}
+                      placeholder="3500"
+                      min="0"
+                    />
+                  </div>
+                  <div className="adm-field">
+                    <label>Collection *</label>
+                    {collections.length ? (
+                      <select name="collection" value={formData.collection} onChange={handleFormChange} required>
+                        <option value="">Select collection</option>
+                        {collections.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        required
+                        name="collection"
+                        value={formData.collection}
+                        onChange={handleFormChange}
+                        placeholder="collection-id"
                       />
+                    )}
+                  </div>
+                  <div className="adm-field">
+                    <label>Category *</label>
+                    <input
+                      required
+                      name="category"
+                      value={formData.category}
+                      onChange={handleFormChange}
+                      placeholder="Hard tennis bats"
+                    />
+                  </div>
+                  <div className="adm-field">
+                    <label>Tagline</label>
+                    <input
+                      name="tagline"
+                      value={formData.tagline}
+                      onChange={handleFormChange}
+                      placeholder="Premium Black Edition"
+                    />
+                  </div>
+                  <div className="adm-field">
+                    <label>Badge</label>
+                    <input name="badge" value={formData.badge} onChange={handleFormChange} placeholder="Sale" />
+                  </div>
+                </div>
+              </section>
+
+              <section className="inv-section">
+                <header className="inv-section__head">
+                  <h3>Specs</h3>
+                  <p>Willow, origin, and optional weight note for the product card</p>
+                </header>
+                <div className="adm-form-grid">
+                  <div className="adm-field">
+                    <label>Willow</label>
+                    <input
+                      name="willow"
+                      value={formData.willow}
+                      onChange={handleFormChange}
+                      placeholder="Premium Kashmir Willow"
+                    />
+                  </div>
+                  <div className="adm-field">
+                    <label>Weight note</label>
+                    <input
+                      name="weight"
+                      value={formData.weight}
+                      onChange={handleFormChange}
+                      placeholder="Under 1020g"
+                    />
+                  </div>
+                  <div className="adm-field adm-field--full">
+                    <label>Made in</label>
+                    <input
+                      name="madeIn"
+                      value={formData.madeIn}
+                      onChange={handleFormChange}
+                      placeholder="Tamil Nadu, India"
+                    />
+                  </div>
+                  <div className="adm-field adm-field--full">
+                    <label>Description</label>
+                    <textarea
+                      name="description"
+                      value={formData.description}
+                      onChange={handleFormChange}
+                      rows={3}
+                      placeholder="Short product story for the detail page…"
+                    />
+                  </div>
+                  <div className="adm-field adm-field--full">
+                    <label>Features (one per line)</label>
+                    <textarea
+                      name="features"
+                      value={formData.features}
+                      onChange={handleFormChange}
+                      rows={5}
+                      placeholder={'Premium Black Edition Design\nUnder 1020g Weight\nNatural Straight Grains'}
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <section className="inv-section">
+                <header className="inv-section__head">
+                  <h3>Sizes</h3>
+                  <p>Each size has its own ID, label, and price — customers pick these on checkout</p>
+                </header>
+                <div className="inv-row-list">
+                  <div className="inv-row-list__labels">
+                    <span>ID</span>
+                    <span>Label</span>
+                    <span>Price (₹)</span>
+                    <span />
+                  </div>
+                  {(formData.sizeRows || [{ id: '', label: '', price: '' }]).map((row, index) => (
+                    <div key={`size-${index}`} className="inv-row">
+                      <input
+                        placeholder="35"
+                        value={row.id}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setFormData((prev) => {
+                            const next = [...(prev.sizeRows || [])];
+                            next[index] = { ...next[index], id: value };
+                            return { ...prev, sizeRows: next };
+                          });
+                        }}
+                      />
+                      <input
+                        placeholder='35"'
+                        value={row.label}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setFormData((prev) => {
+                            const next = [...(prev.sizeRows || [])];
+                            const cur = { ...next[index], label: value };
+                            if (!String(cur.id || '').trim() && value.trim()) {
+                              cur.id = value.trim().toLowerCase().replace(/\s+/g, '-');
+                            }
+                            next[index] = cur;
+                            return { ...prev, sizeRows: next };
+                          });
+                        }}
+                      />
+                      <input
+                        inputMode="decimal"
+                        placeholder={String(formData.price || '3300')}
+                        value={row.price}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setFormData((prev) => {
+                            const next = [...(prev.sizeRows || [])];
+                            next[index] = { ...next[index], price: value };
+                            return { ...prev, sizeRows: next };
+                          });
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="adm-btn adm-btn--danger inv-row__remove"
+                        onClick={() => {
+                          setFormData((prev) => {
+                            const next = (prev.sizeRows || []).filter((_, i) => i !== index);
+                            return {
+                              ...prev,
+                              sizeRows: next.length ? next : [{ id: '', label: '', price: '' }],
+                            };
+                          });
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="inv-add-row"
+                  onClick={() =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      sizeRows: [
+                        ...(prev.sizeRows || []),
+                        { id: '', label: '', price: String(prev.price || '') },
+                      ],
+                    }))
+                  }
+                >
+                  + Add size
+                </button>
+              </section>
+
+              <section className="inv-section">
+                <header className="inv-section__head">
+                  <h3>Weight ranges</h3>
+                  <p>From–to grams. Example: 850 to 950 → “850g – 950g”</p>
+                </header>
+                <div className="inv-row-list">
+                  <div className="inv-row-list__labels inv-row-list__labels--weight">
+                    <span>From (g)</span>
+                    <span />
+                    <span>To (g)</span>
+                    <span />
+                  </div>
+                  {(formData.weightRanges || [{ from: '', to: '' }]).map((row, index) => (
+                    <div key={`weight-${index}`} className="inv-row inv-row--weight">
+                      <input
+                        inputMode="numeric"
+                        placeholder="850"
+                        value={row.from}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setFormData((prev) => {
+                            const next = [...(prev.weightRanges || [])];
+                            next[index] = { ...next[index], from: value };
+                            return { ...prev, weightRanges: next };
+                          });
+                        }}
+                      />
+                      <span className="inv-row__sep">to</span>
+                      <input
+                        inputMode="numeric"
+                        placeholder="950"
+                        value={row.to}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setFormData((prev) => {
+                            const next = [...(prev.weightRanges || [])];
+                            next[index] = { ...next[index], to: value };
+                            return { ...prev, weightRanges: next };
+                          });
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="adm-btn adm-btn--danger inv-row__remove"
+                        onClick={() => {
+                          setFormData((prev) => {
+                            const next = (prev.weightRanges || []).filter((_, i) => i !== index);
+                            return {
+                              ...prev,
+                              weightRanges: next.length ? next : [{ from: '', to: '' }],
+                            };
+                          });
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="inv-add-row"
+                  onClick={() =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      weightRanges: [...(prev.weightRanges || []), { from: '', to: '' }],
+                    }))
+                  }
+                >
+                  + Add weight range
+                </button>
+              </section>
+
+              <section className="inv-section">
+                <header className="inv-section__head">
+                  <h3>Images</h3>
+                  <p>Upload files or paste a URL. First image is the catalogue thumbnail.</p>
+                </header>
+                <div className="inv-images-toolbar">
+                  <label className={`adm-btn adm-btn--ghost${uploading ? ' is-disabled' : ''}`}>
+                    {uploading ? 'Uploading…' : 'Upload images'}
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      onChange={handleFileUpload}
+                      disabled={uploading}
+                      hidden
+                    />
+                  </label>
+                  <div className="inv-url-add">
+                    <input
+                      id="inv-image-url"
+                      placeholder="/batimages/bat1.webp or https://…"
+                      onKeyDown={(e) => {
+                        if (e.key !== 'Enter') return;
+                        e.preventDefault();
+                        const value = e.currentTarget.value.trim();
+                        if (!value) return;
+                        setFormData((prev) => ({
+                          ...prev,
+                          imageList: [...(prev.imageList || []), value],
+                        }));
+                        e.currentTarget.value = '';
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="adm-btn adm-btn--ghost"
+                      onClick={() => {
+                        const el = document.getElementById('inv-image-url');
+                        const value = el?.value?.trim();
+                        if (!value) return;
+                        setFormData((prev) => ({
+                          ...prev,
+                          imageList: [...(prev.imageList || []), value],
+                        }));
+                        if (el) el.value = '';
+                      }}
+                    >
+                      Add URL
+                    </button>
+                  </div>
+                </div>
+                {(formData.imageList || []).length === 0 ? (
+                  <div className="inv-images-empty">No images yet — upload or paste a path.</div>
+                ) : (
+                  <div className="inv-images-grid">
+                    {(formData.imageList || []).map((img, index) => (
+                      <div key={`${img}-${index}`} className="inv-image-card">
+                        <img
+                          src={mediaUrl(img)}
+                          alt=""
+                          onError={(e) => {
+                            e.currentTarget.src = '/products/placeholders/front.svg';
+                          }}
+                        />
+                        <div className="inv-image-card__meta">
+                          <span title={img}>{img}</span>
+                          <button
+                            type="button"
+                            className="adm-btn adm-btn--danger"
+                            onClick={() =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                imageList: (prev.imageList || []).filter((_, i) => i !== index),
+                              }))
+                            }
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
-              </div>
+              </section>
 
-              <div style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem' }}>
-                  <input type="checkbox" name="inStock" checked={formData.inStock} onChange={handleFormChange} />
-                  In stock
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem' }}>
-                  <input type="checkbox" name="topSelling" checked={formData.topSelling} onChange={handleFormChange} />
-                  Top selling
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem' }}>
-                  <input type="checkbox" name="mostLoved" checked={formData.mostLoved} onChange={handleFormChange} />
-                  Most loved
-                </label>
-              </div>
+              <section className="inv-section inv-section--flags">
+                <header className="inv-section__head">
+                  <h3>Visibility</h3>
+                  <p>Stock and homepage highlights</p>
+                </header>
+                <div className="inv-flags">
+                  <label>
+                    <input type="checkbox" name="inStock" checked={formData.inStock} onChange={handleFormChange} />
+                    In stock
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      name="topSelling"
+                      checked={formData.topSelling}
+                      onChange={handleFormChange}
+                    />
+                    Top selling
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      name="mostLoved"
+                      checked={formData.mostLoved}
+                      onChange={handleFormChange}
+                    />
+                    Most loved
+                  </label>
+                </div>
+              </section>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  style={{
-                    padding: '0.75rem 1.25rem',
-                    border: '1px solid #ccc',
-                    borderRadius: '6px',
-                    background: 'white',
-                    cursor: 'pointer',
-                  }}
-                >
+              <div className="inv-form-foot">
+                <button type="button" className="adm-btn adm-btn--ghost" onClick={closeModal}>
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  style={{
-                    padding: '0.75rem 1.25rem',
-                    background: 'var(--accent)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                  }}
-                >
-                  Save Product
+                <button type="submit" className="adm-btn adm-btn--primary">
+                  Save product
                 </button>
               </div>
             </form>
-          </div>
+          </aside>
         </div>
       )}
     </div>

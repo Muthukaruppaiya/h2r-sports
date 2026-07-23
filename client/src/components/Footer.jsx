@@ -51,10 +51,10 @@ export default function Footer() {
           </div>
           <div className="footer__col">
             <h3>Policies</h3>
+            <Link to="/policies/terms">Terms &amp; Policies</Link>
+            <Link to="/policies/returns">No Refund Policy</Link>
             <Link to="/policies/shipping">Shipping Policy</Link>
-            <Link to="/policies/returns">Return / Refund Policy</Link>
             <Link to="/policies/privacy">Privacy Policy</Link>
-            <Link to="/policies/terms">Terms of Service</Link>
           </div>
           <div className="footer__col">
             <h3>Help</h3>
@@ -80,8 +80,9 @@ export default function Footer() {
           &copy; {year} {BRAND.name}. All prices in Rs. (incl. GST).
         </p>
         <div className="footer__legal">
+          <Link to="/policies/terms">Terms &amp; Policies</Link>
+          <Link to="/policies/returns">No Refund</Link>
           <Link to="/policies/privacy">Privacy</Link>
-          <Link to="/policies/terms">Terms</Link>
         </div>
       </div>
     </footer>

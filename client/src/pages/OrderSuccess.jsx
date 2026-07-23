@@ -1,13 +1,46 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { BRAND, formatINR } from '../utils/india';
 import { api } from '../api/store';
+
+function ConfettiBurst() {
+  const pieces = useMemo(
+    () =>
+      Array.from({ length: 28 }, (_, i) => ({
+        id: i,
+        left: `${4 + ((i * 17) % 92)}%`,
+        delay: `${(i % 10) * 0.04}s`,
+        duration: `${1.4 + (i % 5) * 0.18}s`,
+        color: ['#25d366', '#34b7f1', '#f59e0b', '#ef4444', '#a855f7', '#0a2540'][i % 6],
+        rotate: `${(i * 47) % 360}deg`,
+      })),
+    []
+  );
+
+  return (
+    <div className="pay-success__confetti" aria-hidden>
+      {pieces.map((p) => (
+        <span
+          key={p.id}
+          style={{
+            left: p.left,
+            animationDelay: p.delay,
+            animationDuration: p.duration,
+            background: p.color,
+            ['--spin']: p.rotate,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
 
 export default function OrderSuccess() {
   const { id } = useParams();
   const location = useLocation();
   const [order, setOrder] = useState(location.state?.order || null);
   const [error, setError] = useState('');
+  const [showSplash, setShowSplash] = useState(!!location.state?.justPaid);
 
   useEffect(() => {
     if (order || !id) return;
@@ -16,6 +49,12 @@ export default function OrderSuccess() {
       .then(setOrder)
       .catch(() => setError('We could not load this order. Please try again.'));
   }, [id, order]);
+
+  useEffect(() => {
+    if (!showSplash) return undefined;
+    const t = window.setTimeout(() => setShowSplash(false), 2400);
+    return () => window.clearTimeout(t);
+  }, [showSplash]);
 
   if (error) {
     return (
@@ -40,20 +79,37 @@ export default function OrderSuccess() {
     );
   }
 
+  const orderRef = order.id || order.orderId;
   const payLabel =
     order.paymentMethod === 'upi'
-      ? `UPI (${order.paymentMeta?.upiId || ''})`
+      ? `UPI${order.paymentMeta?.vpa ? ` · ${order.paymentMeta.vpa}` : ''}`
       : order.paymentMethod === 'card'
-        ? `Card ending ${order.paymentMeta?.cardLast4 || '****'}`
-        : String(order.paymentMethod || 'Prepaid').toUpperCase();
+        ? `Card${order.paymentMeta?.cardLast4 ? ` · •••• ${order.paymentMeta.cardLast4}` : ''}`
+        : order.paymentMethod === 'razorpay'
+          ? 'Razorpay'
+          : String(order.paymentMethod || 'Prepaid').toUpperCase();
 
   return (
     <main className="checkout">
-      <div className="container order-success">
+      {showSplash && (
+        <div className="pay-success" role="status" aria-live="polite">
+          <ConfettiBurst />
+          <div className="pay-success__orb">
+            <svg className="pay-success__check" viewBox="0 0 52 52" aria-hidden>
+              <circle className="pay-success__circle" cx="26" cy="26" r="24" fill="none" />
+              <path className="pay-success__tick" fill="none" d="M14.5 27.2l7.2 7.2 15.8-16.2" />
+            </svg>
+          </div>
+          <p className="pay-success__label">Payment successful</p>
+          <strong className="pay-success__amount">{formatINR(order.total)}</strong>
+        </div>
+      )}
+
+      <div className={`container order-success${showSplash ? ' order-success--waiting' : ' order-success--in'}`}>
         <div className="order-success__badge">Order confirmed</div>
         <h1>Thank you, {order.customer.name}!</h1>
         <p>
-          Your {BRAND.name} order <strong>{order.id}</strong> is placed. Payment received (demo).
+          Your {BRAND.name} order <strong>{orderRef}</strong> is placed and payment is confirmed.
         </p>
 
         <div className="order-success__grid">
@@ -61,9 +117,10 @@ export default function OrderSuccess() {
             <h2>Items</h2>
             <ul>
               {order.items.map((item) => (
-                <li key={`${item.id}-${item.sizeId}`}>
+                <li key={`${item.id}-${item.sizeId}-${item.weightId || ''}`}>
                   <span>
-                    {item.name} · {item.sizeLabel} × {item.qty}
+                    {item.name} · {item.sizeLabel}
+                    {item.weightLabel ? ` · ${item.weightLabel}` : ''} × {item.qty}
                   </span>
                   <span>{formatINR(item.lineTotal)}</span>
                 </li>
@@ -84,7 +141,17 @@ export default function OrderSuccess() {
               {order.shipping.city}, {order.shipping.state} — {order.shipping.pincode}
             </p>
             <h2>Payment</h2>
-            <p>{payLabel}</p>
+            <p>
+              {payLabel}
+              {order.razorpayPaymentId || order.paymentMeta?.razorpayPaymentId ? (
+                <>
+                  <br />
+                  <small style={{ color: '#64748b' }}>
+                    Ref {order.razorpayPaymentId || order.paymentMeta.razorpayPaymentId}
+                  </small>
+                </>
+              ) : null}
+            </p>
             <h2>Contact</h2>
             <p>
               {order.customer.phone}
@@ -98,14 +165,9 @@ export default function OrderSuccess() {
           <Link to="/shop" className="btn btn--primary">
             Continue shopping
           </Link>
-          <a
-            className="btn btn--outline-dark"
-            href={BRAND.instagram}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Follow {BRAND.instagramHandle}
-          </a>
+          <Link to="/my-orders" className="btn btn--outline-dark">
+            My orders
+          </Link>
         </div>
       </div>
     </main>

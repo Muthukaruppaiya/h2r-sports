@@ -1,57 +1,74 @@
 # H2R Sports — Cricket Bat Shop
 
-React storefront for H2R Sports (Tamil Nadu). Frontend-only — works locally and on Netlify.
+Full-stack store: React (Netlify) + Express/Mongo API (Render) + Razorpay checkout.
 
 ## Structure
 
 ```
-client/     React + Vite (the live app)
-server/     Optional Express API (not needed for Netlify)
-netlify.toml
+client/        React + Vite storefront & admin
+server/        Express API (orders, products, Razorpay, marketing)
+netlify.toml   Netlify build → client/dist, API → Render
 ```
 
-## Develop (frontend only)
+## Production URLs
+
+| Layer | URL |
+|-------|-----|
+| API (Render) | `https://h2r-sports.onrender.com` |
+| API base | `https://h2r-sports.onrender.com/api` |
+| Client (Netlify) | your Netlify site URL |
+
+Client production builds use `VITE_API_URL=https://h2r-sports.onrender.com/api`  
+(from `netlify.toml` + `client/.env.production`).
+
+## Local development
 
 ```bash
+# API
+cd server
+cp .env.example .env   # set MONGO_URI, JWT_SECRET, Razorpay test keys
 npm install
-npm install --prefix client
+npm run dev
+
+# Client (separate terminal)
+cd client
+cp .env.example .env   # defaults to http://localhost:5000/api
+npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`. Products, collections, and reviews load from `client/src/data/catalogue.js`. Orders save in the browser (`localStorage`).
+Open `http://localhost:5173`.
 
-Optional Express API (local only, not required):
+## Deploy checklist
 
-```bash
-npm run dev:server
+### Render (server)
+Set environment variables:
+- `MONGO_URI`
+- `JWT_SECRET`
+- `PUBLIC_API_URL=https://h2r-sports.onrender.com`
+- `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` (live keys when ready)
+
+Start command: `npm start` (from `server/`)
+
+### Netlify (client)
+`netlify.toml` already sets:
+
+```toml
+VITE_API_URL = "https://h2r-sports.onrender.com/api"
 ```
 
-## Build / Netlify
+Redeploy after push. Confirm Site settings → Environment has the same `VITE_API_URL` if overridden.
 
-Root `netlify.toml` builds the client and publishes `client/dist`. SPA routes redirect to `index.html`.
-
-```bash
-npm run build
-```
-
-Redeploy on Netlify after pushing these changes.
+### Razorpay Dashboard
+Add your **Netlify domain** under Website / Checkout allowed domains, and enable **UPI** for live payments.
 
 ## Pages
 
 | Path | Description |
 |------|-------------|
-| `/` | Home — collections, top selling, reviews |
-| `/collections/:slug` | hard-tennis · soft-tennis · season |
-| `/shop` | All products + filters |
+| `/` | Home |
+| `/shop` | Catalogue |
 | `/shop/:id` | Product detail |
-| `/cart` | Cart |
-| `/checkout` | Checkout (COD / UPI / Card demo) |
-| `/order/:id` | Order confirmation |
-
-## Product images
-
-```
-client/public/products/<product-id>/
-  01-front.svg
-  …
-```
+| `/checkout` | Razorpay prepaid checkout |
+| `/order/:id` | Order success |
+| `/admin` | Admin (inventory, orders, marketing, billing, reports) |

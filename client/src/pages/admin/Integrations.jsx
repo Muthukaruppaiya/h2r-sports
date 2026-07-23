@@ -2,9 +2,11 @@ export default function Integrations() {
   return (
     <div className="admin-stub">
       <h1>Integrations</h1>
-      <p>Connect payment gateways, shipping partners, and marketing tools. More connectors coming soon.</p>
+      <p>Connected tools for payments, shipping, and marketing.</p>
       <ul>
-        <li>Razorpay / UPI — planned</li>
+        <li>
+          <strong>Razorpay</strong> — live on checkout (test keys via <code>RAZORPAY_KEY_*</code> env)
+        </li>
         <li>Shiprocket — planned</li>
         <li>WhatsApp Business API — planned</li>
       </ul>

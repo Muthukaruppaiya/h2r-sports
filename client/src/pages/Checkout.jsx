@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { BRAND, formatINR, INDIAN_STATES } from '../utils/india';
 import { api } from '../api/store';
 import { clearBuyNowItem, getBuyNowItem } from '../utils/checkoutItem';
+import { buildRazorpayOptions, openRazorpayCheckout } from '../utils/razorpay';
 
 const emptyForm = {
   name: '',
@@ -13,13 +14,38 @@ const emptyForm = {
   city: '',
   state: 'Tamil Nadu',
   pincode: '',
-  paymentMethod: 'upi',
-  upiId: '',
-  cardName: '',
-  cardNumber: '',
-  cardExpiry: '',
-  cardCvv: '',
 };
+
+const PAY_METHODS = [
+  {
+    id: 'upi',
+    title: 'UPI',
+    subtitle: 'Scan QR or enter UPI ID',
+    badges: ['GPay', 'PhonePe', 'Paytm'],
+    hint: 'Fastest · Recommended',
+  },
+  {
+    id: 'card',
+    title: 'Cards',
+    subtitle: 'Debit / Credit / RuPay',
+    badges: ['Visa', 'Mastercard', 'RuPay'],
+    hint: 'Secure OTP checkout',
+  },
+  {
+    id: 'netbanking',
+    title: 'Netbanking',
+    subtitle: 'All major Indian banks',
+    badges: ['HDFC', 'SBI', 'ICICI'],
+    hint: 'Bank login',
+  },
+];
+
+function formatPhoneForRazorpay(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.startsWith('91') && digits.length === 12) return `+${digits}`;
+  return phone;
+}
 
 export default function Checkout() {
   const navigate = useNavigate();
@@ -31,11 +57,12 @@ export default function Checkout() {
         const user = JSON.parse(userStr);
         return { ...emptyForm, name: user.name || '', email: user.email || '', phone: user.phone || '' };
       }
-    } catch (e) {
+    } catch {
       /* ignore */
     }
     return emptyForm;
   });
+  const [payMethod, setPayMethod] = useState('upi');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -45,6 +72,7 @@ export default function Checkout() {
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
   const canSubmit = useMemo(() => !!item && !submitting, [item, submitting]);
+  const selectedPay = PAY_METHODS.find((m) => m.id === payMethod) || PAY_METHODS[0];
 
   useEffect(() => {
     const token = localStorage.getItem('h2r_token');
@@ -78,28 +106,57 @@ export default function Checkout() {
         {
           id: item.id,
           sizeId: item.sizeId,
+          weightId: item.weightId || '',
           qty: item.qty,
         },
       ],
-      paymentMethod: form.paymentMethod,
-      paymentMeta:
-        form.paymentMethod === 'upi'
-          ? { upiId: form.upiId }
-          : form.paymentMethod === 'card'
-            ? {
-                cardName: form.cardName,
-                cardLast4: form.cardNumber.replace(/\s/g, '').slice(-4),
-              }
-            : {},
     };
 
     try {
-      const data = await api.createOrder(payload);
-      clearBuyNowItem();
-      navigate(`/order/${data.order.id}`, { state: { order: data.order } });
-    } catch {
-      setError('Could not place order. Please try again.');
-    } finally {
+      const data = await api.createRazorpayOrder(payload);
+
+      const options = buildRazorpayOptions({
+        keyId: data.keyId,
+        amount: data.amount,
+        currency: data.currency || 'INR',
+        orderId: data.orderId,
+        razorpayOrderId: data.razorpayOrderId,
+        preferredMethod: payMethod,
+        customer: {
+          name: form.name,
+          email: form.email,
+          contact: formatPhoneForRazorpay(form.phone),
+        },
+        productLabel: `${item.name}${item.sizeLabel ? ` · ${item.sizeLabel}` : ''}`,
+        onSuccess: async (response) => {
+          try {
+            const verified = await api.verifyRazorpayPayment({
+              orderId: data.orderId,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            });
+            clearBuyNowItem();
+            navigate(`/order/${verified.order.id || verified.order.orderId}`, {
+              state: { order: verified.order, justPaid: true },
+            });
+          } catch (verifyErr) {
+            setError(
+              verifyErr.response?.data?.error ||
+                'Payment received but verification failed. Contact support with your payment ID.'
+            );
+            setSubmitting(false);
+          }
+        },
+        onDismiss: () => {
+          setSubmitting(false);
+          setError('Payment window closed. Choose a method and try again.');
+        },
+      });
+
+      await openRazorpayCheckout(options);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not start payment. Please try again.');
       setSubmitting(false);
     }
   }
@@ -124,7 +181,12 @@ export default function Checkout() {
         <form className="checkout__form" onSubmit={placeOrder}>
           <h1>Checkout</h1>
           <p className="checkout__lead">
-            Prepaid order for {BRAND.name}. Pay with UPI or card — shipping is free across India.
+            Prepaid only · Free shipping across India · Secured by Razorpay
+          </p>
+          <p className="checkout__policy-note">
+            By placing this order you agree to our{' '}
+            <Link to="/policies/terms">Terms &amp; Policies</Link>
+            {' '}(no refund · no COD · 6 months handle warranty).
           </p>
 
           {error && <div className="checkout__error">{error}</div>}
@@ -185,104 +247,100 @@ export default function Checkout() {
             </label>
           </section>
 
-          <section className="checkout__section">
-            <h2>3. Payment</h2>
-            <div className="pay-options">
-              {[
-                { id: 'upi', label: 'UPI', hint: 'GPay / PhonePe / Paytm' },
-                { id: 'card', label: 'Debit / Credit Card', hint: 'Demo card checkout' },
-              ].map((opt) => (
-                <label
-                  key={opt.id}
-                  className={`pay-option${form.paymentMethod === opt.id ? ' pay-option--active' : ''}`}
-                >
-                  <input
-                    type="radio"
-                    name="payment"
-                    value={opt.id}
-                    checked={form.paymentMethod === opt.id}
-                    onChange={set('paymentMethod')}
-                  />
-                  <span>
-                    <strong>{opt.label}</strong>
-                    <small>{opt.hint}</small>
-                  </span>
-                </label>
-              ))}
+          <section className="checkout__section checkout__section--pay">
+            <div className="pay-head">
+              <h2>3. Payment</h2>
+              <span className="pay-head__secure">Secured by Razorpay</span>
             </div>
 
-            {form.paymentMethod === 'upi' && (
-              <label>
-                UPI ID *
-                <input
-                  required
-                  value={form.upiId}
-                  onChange={set('upiId')}
-                  placeholder="name@upi"
-                />
-              </label>
+            <div className="pay-method-grid" role="radiogroup" aria-label="Payment method">
+              {PAY_METHODS.map((method) => {
+                const active = payMethod === method.id;
+                return (
+                  <button
+                    key={method.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    className={`pay-method${active ? ' is-active' : ''}${method.id === 'upi' ? ' pay-method--upi' : ''}`}
+                    onClick={() => setPayMethod(method.id)}
+                  >
+                    <span className="pay-method__top">
+                      <span className="pay-method__icon" aria-hidden>
+                        {method.id === 'upi' ? '⬡' : method.id === 'card' ? '▭' : '☰'}
+                      </span>
+                      <span className="pay-method__titles">
+                        <strong>{method.title}</strong>
+                        <small>{method.subtitle}</small>
+                      </span>
+                      {method.id === 'upi' && <em className="pay-method__tag">Best</em>}
+                    </span>
+                    <span className="pay-method__badges">
+                      {method.badges.map((b) => (
+                        <span key={b}>{b}</span>
+                      ))}
+                    </span>
+                    <span className="pay-method__hint">{method.hint}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {payMethod === 'upi' && (
+              <div className="pay-upi-panel">
+                <div className="pay-upi-panel__visual" aria-hidden>
+                  <div className="pay-upi-qr">
+                    <span />
+                    <span />
+                    <span />
+                    <span />
+                    <strong>QR</strong>
+                  </div>
+                  <div className="pay-upi-divider">or</div>
+                  <div className="pay-upi-id">
+                    <strong>UPI ID</strong>
+                    <span>name@oksbi · name@ybl</span>
+                  </div>
+                </div>
+                <p>
+                  Opens Razorpay with <strong>UPI first</strong> (scan QR or enter UPI ID) when UPI is
+                  enabled on your Razorpay account.
+                </p>
+                <p className="pay-upi-panel__note">
+                  Test mode tip: if you only see Cards / Netbanking / Wallet, enable <strong>UPI</strong> in
+                  Razorpay Dashboard → Payment Methods (or use a live key after KYC). Test cards still work now.
+                </p>
+              </div>
             )}
 
-            {form.paymentMethod === 'card' && (
-              <div className="card-fields">
-                <label>
-                  Name on card *
-                  <input required value={form.cardName} onChange={set('cardName')} />
-                </label>
-                <label>
-                  Card number *
-                  <input
-                    required
-                    inputMode="numeric"
-                    maxLength={19}
-                    value={form.cardNumber}
-                    onChange={set('cardNumber')}
-                    placeholder="XXXX XXXX XXXX XXXX"
-                  />
-                </label>
-                <div className="checkout__grid2">
-                  <label>
-                    Expiry *
-                    <input
-                      required
-                      value={form.cardExpiry}
-                      onChange={set('cardExpiry')}
-                      placeholder="MM/YY"
-                    />
-                  </label>
-                  <label>
-                    CVV *
-                    <input
-                      required
-                      inputMode="numeric"
-                      maxLength={4}
-                      value={form.cardCvv}
-                      onChange={set('cardCvv')}
-                      placeholder="***"
-                    />
-                  </label>
-                </div>
-                <p className="checkout__note">
-                  Demo mode — card is not charged to a live gateway yet (Razorpay can be connected
-                  later).
+            {payMethod !== 'upi' && (
+              <div className="pay-other-panel">
+                <p>
+                  Continues on Razorpay’s secure checkout for <strong>{selectedPay.title}</strong>. OTP /
+                  bank login stays on Razorpay — we never store card numbers.
                 </p>
               </div>
             )}
           </section>
 
-          <button type="submit" className="btn btn--primary btn--full" disabled={!canSubmit}>
-            {submitting ? 'Placing order…' : `Pay ${formatINR(payable)} & place order`}
+          <button type="submit" className="btn btn--primary btn--full pay-cta" disabled={!canSubmit}>
+            {submitting
+              ? `Opening ${selectedPay.title}…`
+              : payMethod === 'upi'
+                ? `Pay ${formatINR(payable)} with UPI`
+                : `Pay ${formatINR(payable)} with ${selectedPay.title}`}
           </button>
         </form>
 
-        <aside className="checkout__summary">
+        <aside className="checkout__summary checkout__summary--elevated">
           <h2>Order summary</h2>
           <ul>
             <li key={item.key}>
               <div>
                 <strong>{item.name}</strong>
                 <span>
-                  {item.sizeLabel} × {item.qty}
+                  {item.sizeLabel}
+                  {item.weightLabel ? ` · ${item.weightLabel}` : ''} × {item.qty}
                 </span>
               </div>
               <span>{formatINR(item.price * item.qty)}</span>
@@ -298,9 +356,13 @@ export default function Checkout() {
               <span>FREE</span>
             </div>
             <div className="checkout__payable">
-              <span>Total (incl. GST)</span>
+              <span>Total</span>
               <strong>{formatINR(payable)}</strong>
             </div>
+          </div>
+          <div className="pay-summary-method">
+            <span>Paying via</span>
+            <strong>{selectedPay.title}</strong>
           </div>
         </aside>
       </div>

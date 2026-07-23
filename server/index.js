@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import mongoose from 'mongoose';
+import { GridFSBucket } from 'mongodb';
 
 import Collection from './models/Collection.js';
 import Product from './models/Product.js';
@@ -13,8 +14,18 @@ import Review from './models/Review.js';
 import User from './models/User.js';
 import MarketingSettings from './models/MarketingSettings.js';
 import Media from './models/Media.js';
+import StoreBill from './models/StoreBill.js';
 import { buildStatusUpdate, isValidStatus } from './utils/orderStatus.js';
 import { parseInstagramUrl } from './utils/instagram.js';
+import { buildLineItemsFromRequest, validateCheckoutPayload } from './utils/orderCheckout.js';
+import {
+  getRazorpayClient,
+  getRazorpayKeyId,
+  isRazorpayConfigured,
+  mapRazorpayMethod,
+  rupeesToPaise,
+  verifyRazorpaySignature,
+} from './utils/razorpay.js';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
 
@@ -26,7 +37,7 @@ const FRAMES_DIR   = path.join(ROOT, 'FRAMES');
 const CLIENT_DIST  = path.join(ROOT, 'client', 'dist');
 const PRODUCTS_IMG_DIR = path.join(ROOT, 'client', 'public', 'products');
 const LEGACY_MARKETING_DIR = path.join(ROOT, 'client', 'public', 'marketing');
-/** Writable upload root on Render (lives next to server code) */
+/** Legacy disk uploads (kept as fallback for old URLs only) */
 const MARKETING_DIR = path.join(__dirname, 'uploads', 'marketing');
 const MARKETING_VIDEOS_DIR = path.join(MARKETING_DIR, 'videos');
 const MARKETING_STATUS_DIR = path.join(MARKETING_DIR, 'statuses');
@@ -36,9 +47,45 @@ const PORT      = process.env.PORT      || 5000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/h2r-sports';
 const JWT_SECRET = process.env.JWT_SECRET || 'h2r_sports_super_secret';
 
+/** GridFS bucket for marketing videos (survives Render disk wipes) */
+let marketingBucket = null;
 
+function getMarketingBucket() {
+  if (!marketingBucket) {
+    if (!mongoose.connection?.db) {
+      throw new Error('MongoDB is not connected yet');
+    }
+    marketingBucket = new GridFSBucket(mongoose.connection.db, {
+      bucketName: 'marketing',
+    });
+  }
+  return marketingBucket;
+}
 
-// ─── Image helpers ────────────────────────────────────────────────────────────
+function publicApiOrigin(req) {
+  return (
+    process.env.PUBLIC_API_URL ||
+    `${req.get('x-forwarded-proto') || req.protocol}://${req.get('host')}`
+  ).replace(/\/$/, '');
+}
+
+function storeBufferInGridFS(buffer, { filename, contentType }) {
+  return new Promise((resolve, reject) => {
+    const bucket = getMarketingBucket();
+    const uploadStream = bucket.openUploadStream(filename || 'upload.bin', {
+      contentType: contentType || 'application/octet-stream',
+      metadata: { kind: 'marketing' },
+    });
+    uploadStream.on('error', reject);
+    uploadStream.on('finish', () => {
+      resolve({
+        id: String(uploadStream.id),
+        url: `/api/media/${uploadStream.id}`,
+      });
+    });
+    uploadStream.end(buffer);
+  });
+}// ─── Image helpers ────────────────────────────────────────────────────────────
 const PLACEHOLDER_IMGS = [
   '/products/placeholders/front.svg',
   '/products/placeholders/side.svg',
@@ -74,7 +121,7 @@ function withImages(product) {
 function sanitizeProductInput(body, { isCreate = false } = {}) {
   const allowed = [
     'id', 'name', 'tagline', 'price', 'compareAt', 'collection', 'category', 'badge',
-    'weight', 'willow', 'madeIn', 'topSelling', 'mostLoved', 'inStock', 'sizes',
+    'weight', 'willow', 'madeIn', 'topSelling', 'mostLoved', 'inStock', 'sizes', 'weights',
     'features', 'images', 'description',
   ];
   const out = {};
@@ -98,6 +145,19 @@ function sanitizeProductInput(body, { isCreate = false } = {}) {
       }))
       .filter((s) => s.id && s.label);
   }
+  if (Array.isArray(out.weights)) {
+    out.weights = out.weights
+      .map((w) => {
+        const from = String(w.from ?? '').replace(/[^\d.]/g, '').trim();
+        const to = String(w.to ?? '').replace(/[^\d.]/g, '').trim();
+        if (!from || !to) return null;
+        const label =
+          String(w.label || '').trim() || `${from}g – ${to}g`;
+        const id = String(w.id || '').trim() || `${from}-${to}`;
+        return { id, from, to, label };
+      })
+      .filter(Boolean);
+  }
   if (Array.isArray(out.images)) {
     out.images = out.images.map((img) => String(img).trim()).filter(Boolean);
   }
@@ -115,7 +175,7 @@ app.use(cors());
 app.use(express.json());
 
 // ─── Multer Config ───────────────────────────────────────────────────────────
-// Product images go to MongoDB (survives Render restarts). Marketing still uses disk.
+// Product images + marketing media go to MongoDB (survives Render restarts).
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024, files: 5 },
@@ -124,21 +184,6 @@ const upload = multer({
       return cb(new Error('Only image files are allowed'));
     }
     cb(null, true);
-  },
-});
-
-const videoUploadStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    try {
-      fs.mkdirSync(MARKETING_VIDEOS_DIR, { recursive: true });
-      cb(null, MARKETING_VIDEOS_DIR);
-    } catch (err) {
-      cb(err);
-    }
-  },
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase() || '.mp4';
-    cb(null, `video-${Date.now()}-${Math.round(Math.random() * 1E9)}${ext}`);
   },
 });
 
@@ -152,26 +197,11 @@ function isAllowedVideoFile(file) {
 }
 
 const videoUpload = multer({
-  storage: videoUploadStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: MAX_VIDEO_BYTES },
   fileFilter: (_req, file, cb) => {
     if (isAllowedVideoFile(file)) return cb(null, true);
     cb(new Error('Only video files are allowed (mp4, webm, mov).'));
-  },
-});
-
-const statusMediaStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    try {
-      fs.mkdirSync(MARKETING_STATUS_DIR, { recursive: true });
-      cb(null, MARKETING_STATUS_DIR);
-    } catch (err) {
-      cb(err);
-    }
-  },
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase() || '.bin';
-    cb(null, `status-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
   },
 });
 
@@ -184,7 +214,7 @@ function isAllowedStatusMedia(file) {
 }
 
 const statusMediaUpload = multer({
-  storage: statusMediaStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: MAX_VIDEO_BYTES },
   fileFilter: (_req, file, cb) => {
     if (isAllowedStatusMedia(file)) return cb(null, true);
@@ -199,6 +229,16 @@ function detectMediaType(file) {
   if (type.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(name)) return 'image';
   if (type.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(name)) return 'video';
   return null;
+}
+
+function guessVideoContentType(file) {
+  const type = String(file?.mimetype || '').toLowerCase();
+  if (type.startsWith('video/')) return type;
+  const name = String(file?.originalname || '').toLowerCase();
+  if (name.endsWith('.webm')) return 'video/webm';
+  if (name.endsWith('.mov')) return 'video/quicktime';
+  if (name.endsWith('.m4v')) return 'video/x-m4v';
+  return 'video/mp4';
 }
 
 function uploadErrorMessage(err, fallback) {
@@ -478,94 +518,187 @@ app.get('/api/reviews', async (_req, res) => {
   }
 });
 
-// ─── Orders ───────────────────────────────────────────────────────────────────
-app.post('/api/orders', async (req, res) => {
-  const { customer, shipping, items, paymentMethod, paymentMeta } = req.body || {};
+// ─── Orders / Razorpay ─────────────────────────────────────────────────────────
+function publicOrder(orderDoc) {
+  const order = orderDoc?.toObject ? orderDoc.toObject() : orderDoc;
+  if (!order) return null;
+  return {
+    ...order,
+    id: order.orderId,
+  };
+}
 
-  // Validation
-  if (!customer?.name || !customer?.phone || !customer?.email)
-    return res.status(400).json({ error: 'Name, phone and email are required' });
-  if (!shipping?.addressLine1 || !shipping?.city || !shipping?.state || !shipping?.pincode)
-    return res.status(400).json({ error: 'Complete shipping address is required' });
-  if (!/^[6-9]\d{9}$/.test(String(customer.phone).replace(/\s/g, '')))
-    return res.status(400).json({ error: 'Enter a valid 10-digit Indian mobile number' });
-  if (!/^\d{6}$/.test(String(shipping.pincode)))
-    return res.status(400).json({ error: 'Enter a valid 6-digit PIN code' });
-  if (!Array.isArray(items) || items.length === 0)
-    return res.status(400).json({ error: 'No items to order' });
-  if (!['upi', 'card'].includes(paymentMethod))
-    return res.status(400).json({ error: 'Invalid payment method. Use UPI or card.' });
-  if (paymentMethod === 'upi' && !paymentMeta?.upiId)
-    return res.status(400).json({ error: 'UPI ID is required' });
-  if (paymentMethod === 'card' && (!paymentMeta?.cardName || !paymentMeta?.cardLast4))
-    return res.status(400).json({ error: 'Card details are required' });
-
+app.post('/api/payments/razorpay/create', async (req, res) => {
   try {
-    // Resolve products from DB
-    let subtotal = 0;
-    const lineItems = [];
-
-    for (const item of items) {
-      const product = await Product.findOne({ id: item.id }).lean();
-      if (!product) return res.status(400).json({ error: `Unknown product: ${item.id}` });
-      const size = product.sizes.find((s) => s.id === item.sizeId) || product.sizes[0];
-      const qty  = Math.max(1, Number(item.qty) || 1);
-      const lineTotal = size.price * qty;
-      subtotal += lineTotal;
-      lineItems.push({
-        id: product.id, name: product.name,
-        sizeId: size.id, sizeLabel: size.label,
-        price: size.price, qty, lineTotal,
+    if (!isRazorpayConfigured()) {
+      return res.status(503).json({
+        error: 'Razorpay is not configured on the server. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.',
       });
     }
 
-    const shippingFee = 0;
-    const total = subtotal + shippingFee;
+    const { customer, shipping, items } = req.body || {};
+    const validated = validateCheckoutPayload({ customer, shipping });
+    const { lineItems, subtotal, shippingFee, total } = await buildLineItemsFromRequest(items);
 
-    const initialStatus = 'paid';
-    const now = new Date();
-    const initialTimestamps = {
-      confirmedAt: now,
-      paidAt: now,
-    };
+    if (total < 1) {
+      return res.status(400).json({ error: 'Order total must be at least ₹1' });
+    }
 
-    const order = await Order.create({
-      orderId: makeOrderId(),
-      status:        initialStatus,
-      paymentStatus: 'paid',
-      statusTimestamps: initialTimestamps,
-      statusHistory: [{
-        to: initialStatus,
-        changedAt: now,
-        changedBy: 'System',
-        note: 'Order placed',
-      }],
-      paymentMethod,
-      paymentMeta:
-        paymentMethod === 'upi'
-          ? { upiId: paymentMeta.upiId }
-          : { cardName: paymentMeta.cardName, cardLast4: String(paymentMeta.cardLast4).slice(-4) },
-      customer: {
-        name:  customer.name.trim(),
-        phone: String(customer.phone).replace(/\s/g, ''),
-        email: customer.email.trim().toLowerCase(),
-      },
-      shipping: {
-        addressLine1: shipping.addressLine1.trim(),
-        addressLine2: (shipping.addressLine2 || '').trim(),
-        city:    shipping.city.trim(),
-        state:   shipping.state,
-        pincode: String(shipping.pincode),
-      },
-      items: lineItems,
+    const orderId = makeOrderId();
+    const amountPaise = rupeesToPaise(total);
+    const razorpay = getRazorpayClient();
+    const rzpOrder = await razorpay.orders.create({
+      amount: amountPaise,
       currency: 'INR',
-      subtotal, shippingFee, total,
+      receipt: orderId.slice(0, 40),
+      notes: {
+        h2rOrderId: orderId,
+        customerName: validated.customer.name,
+      },
     });
 
-    res.status(201).json({ ok: true, order });
+    const now = new Date();
+    const order = await Order.create({
+      orderId,
+      status: 'ordered',
+      paymentStatus: 'pending',
+      paymentMethod: 'razorpay',
+      razorpayOrderId: rzpOrder.id,
+      paymentMeta: {
+        gateway: 'razorpay',
+        razorpayOrderId: rzpOrder.id,
+      },
+      statusTimestamps: { orderedAt: now },
+      statusHistory: [{
+        to: 'ordered',
+        changedAt: now,
+        changedBy: 'System',
+        note: 'Order created — awaiting Razorpay payment',
+      }],
+      customer: validated.customer,
+      shipping: validated.shipping,
+      items: lineItems,
+      currency: 'INR',
+      subtotal,
+      shippingFee,
+      total,
+    });
+
+    res.status(201).json({
+      ok: true,
+      keyId: getRazorpayKeyId(),
+      amount: amountPaise,
+      currency: 'INR',
+      orderId: order.orderId,
+      razorpayOrderId: rzpOrder.id,
+      order: publicOrder(order),
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message || 'Could not place order' });
+    const status = err.status || 500;
+    console.error('Razorpay create error:', err);
+    res.status(status).json({ error: err.message || 'Could not start payment' });
   }
+});
+
+app.post('/api/payments/razorpay/verify', async (req, res) => {
+  try {
+    const {
+      orderId,
+      razorpay_order_id: razorpayOrderId,
+      razorpay_payment_id: razorpayPaymentId,
+      razorpay_signature: razorpaySignature,
+    } = req.body || {};
+
+    if (!orderId || !razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+      return res.status(400).json({ error: 'Missing payment verification fields' });
+    }
+
+    const order = await Order.findOne({ orderId });
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    if (order.razorpayOrderId && order.razorpayOrderId !== razorpayOrderId) {
+      return res.status(400).json({ error: 'Razorpay order mismatch' });
+    }
+
+    if (order.paymentStatus === 'paid') {
+      return res.json({ ok: true, order: publicOrder(order) });
+    }
+
+    const valid = verifyRazorpaySignature({
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+    });
+    if (!valid) {
+      order.paymentStatus = 'failed';
+      order.paymentMeta = {
+        ...(order.paymentMeta || {}),
+        lastError: 'Invalid payment signature',
+      };
+      await order.save();
+      return res.status(400).json({ error: 'Payment verification failed' });
+    }
+
+    let method = 'razorpay';
+    let paymentDetails = {};
+    try {
+      const payment = await getRazorpayClient().payments.fetch(razorpayPaymentId);
+      method = mapRazorpayMethod(payment.method);
+      paymentDetails = {
+        method: payment.method,
+        bank: payment.bank || '',
+        wallet: payment.wallet || '',
+        vpa: payment.vpa || '',
+        cardLast4: payment.card?.last4 || '',
+        cardNetwork: payment.card?.network || '',
+        email: payment.email || '',
+        contact: payment.contact || '',
+      };
+    } catch (fetchErr) {
+      console.warn('Razorpay payment fetch skipped:', fetchErr.message);
+    }
+
+    const now = new Date();
+    order.paymentStatus = 'paid';
+    order.paymentMethod = method;
+    order.razorpayPaymentId = razorpayPaymentId;
+    order.razorpayOrderId = razorpayOrderId;
+    order.paymentMeta = {
+      ...(order.paymentMeta || {}),
+      gateway: 'razorpay',
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+      ...paymentDetails,
+      paidAt: now.toISOString(),
+    };
+    order.statusTimestamps = {
+      ...(order.statusTimestamps || {}),
+      orderedAt: order.statusTimestamps?.orderedAt || now,
+      paidAt: now,
+      confirmedAt: now,
+    };
+    order.statusHistory.push({
+      from: order.status,
+      to: order.status,
+      changedAt: now,
+      changedBy: 'System',
+      note: `Payment verified via Razorpay (${razorpayPaymentId})`,
+    });
+    await order.save();
+
+    res.json({ ok: true, order: publicOrder(order) });
+  } catch (err) {
+    console.error('Razorpay verify error:', err);
+    res.status(500).json({ error: err.message || 'Payment verification failed' });
+  }
+});
+
+/** Legacy demo checkout — disabled. Use Razorpay create/verify. */
+app.post('/api/orders', async (_req, res) => {
+  res.status(410).json({
+    error: 'Demo checkout retired. Pay with Razorpay via /api/payments/razorpay/create',
+  });
 });
 
 app.get('/api/orders/my-orders', protect, async (req, res) => {
@@ -581,7 +714,7 @@ app.get('/api/orders/:id', async (req, res) => {
   try {
     const order = await Order.findOne({ orderId: req.params.id }).lean();
     if (!order) return res.status(404).json({ error: 'Order not found' });
-    res.json(order);
+    res.json(publicOrder(order));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -599,7 +732,7 @@ app.get('/api/admin/orders', protect, admin, async (req, res) => {
 
 app.put('/api/admin/orders/:id/status', protect, admin, async (req, res) => {
   try {
-    const { status, note } = req.body;
+    const { status, note, courier } = req.body;
     if (!isValidStatus(status)) {
       return res.status(400).json({ error: 'Invalid order status' });
     }
@@ -607,27 +740,23 @@ app.put('/api/admin/orders/:id/status', protect, admin, async (req, res) => {
     const currentOrder = await Order.findOne({ orderId: req.params.id });
     if (!currentOrder) return res.status(404).json({ error: 'Order not found' });
 
-    if (currentOrder.status === status) {
-      return res.json({ ok: true, order: currentOrder.toObject() });
-    }
-
-    const result = buildStatusUpdate(currentOrder.toObject(), status, req.user?.name || 'Admin');
+    const result = buildStatusUpdate(
+      currentOrder.toObject(),
+      status,
+      req.user?.name || 'Admin',
+      courier
+    );
     if (result.error) {
       return res.status(400).json({ error: result.error });
     }
 
-    const { updates } = result;
-    const historyEntry = {
-      from: currentOrder.status,
-      to: status,
-      changedAt: new Date(),
-      changedBy: req.user?.name || 'Admin',
-      ...(note ? { note } : {}),
-    };
+    const { updates, historyEntry } = result;
+    if (note) historyEntry.note = note;
 
-    currentOrder.status = status;
+    currentOrder.status = updates.status;
     currentOrder.statusTimestamps = updates.statusTimestamps;
     if (updates.paymentStatus) currentOrder.paymentStatus = updates.paymentStatus;
+    if (updates.courier) currentOrder.courier = updates.courier;
     currentOrder.statusHistory.push(historyEntry);
     await currentOrder.save();
 
@@ -700,30 +829,66 @@ app.get('/api/admin/marketing', protect, admin, async (_req, res) => {
 });
 
 app.post('/api/admin/marketing/upload-video', protect, admin, (req, res) => {
-  videoUpload.single('video')(req, res, (err) => {
+  videoUpload.single('video')(req, res, async (err) => {
     if (err) {
       console.error('Video upload error:', err);
       return res.status(400).json({ error: uploadErrorMessage(err, 'Video upload failed') });
     }
-    if (!req.file) return res.status(400).json({ error: 'No video file selected' });
-    res.json({ ok: true, url: `/marketing/videos/${req.file.filename}` });
+    try {
+      if (!req.file?.buffer) return res.status(400).json({ error: 'No video file selected' });
+      const stored = await storeBufferInGridFS(req.file.buffer, {
+        filename: req.file.originalname || `video-${Date.now()}.mp4`,
+        contentType: guessVideoContentType(req.file),
+      });
+      // Relative URL so local + Render both resolve via mediaUrl()
+      res.json({ ok: true, url: stored.url });
+    } catch (e) {
+      console.error('Video GridFS store error:', e);
+      res.status(500).json({ error: e.message || 'Video upload failed' });
+    }
   });
 });
 
 app.post('/api/admin/marketing/upload-status-media', protect, admin, (req, res) => {
-  statusMediaUpload.single('media')(req, res, (err) => {
+  statusMediaUpload.single('media')(req, res, async (err) => {
     if (err) {
       console.error('Status media upload error:', err);
       return res.status(400).json({ error: uploadErrorMessage(err, 'Status media upload failed') });
     }
-    if (!req.file) return res.status(400).json({ error: 'No photo or video selected' });
-    const mediaType = detectMediaType(req.file);
-    if (!mediaType) return res.status(400).json({ error: 'Unsupported file type' });
-    res.json({
-      ok: true,
-      url: `/marketing/statuses/${req.file.filename}`,
-      mediaType,
-    });
+    try {
+      if (!req.file?.buffer) return res.status(400).json({ error: 'No photo or video selected' });
+      const mediaType = detectMediaType(req.file);
+      if (!mediaType) return res.status(400).json({ error: 'Unsupported file type' });
+
+      const contentType =
+        mediaType === 'video'
+          ? guessVideoContentType(req.file)
+          : req.file.mimetype || 'image/jpeg';
+
+      // Small status images can use Media collection; videos use GridFS
+      if (mediaType === 'image' && req.file.buffer.length <= 8 * 1024 * 1024) {
+        const doc = await Media.create({
+          filename: req.file.originalname || 'status.jpg',
+          contentType,
+          size: req.file.buffer.length,
+          data: req.file.buffer,
+        });
+        return res.json({
+          ok: true,
+          url: `/api/media/${doc._id}`,
+          mediaType,
+        });
+      }
+
+      const stored = await storeBufferInGridFS(req.file.buffer, {
+        filename: req.file.originalname || `status-${Date.now()}`,
+        contentType,
+      });
+      res.json({ ok: true, url: stored.url, mediaType });
+    } catch (e) {
+      console.error('Status media store error:', e);
+      res.status(500).json({ error: e.message || 'Status media upload failed' });
+    }
   });
 });
 
@@ -827,22 +992,25 @@ app.get('/api/admin/reports/overview', protect, admin, async (req, res) => {
 
     const totalOrders = orders.length;
     const totalRevenue = orders.reduce((sum, order) => sum + (order.total || 0), 0);
-    const deliveredOrders = orders.filter((o) => o.status === 'delivered').length;
+    const deliveredOrders = orders.filter((o) => (o.status === 'delivered')).length;
     const cancelledOrders = orders.filter((o) => o.status === 'cancelled').length;
     const paidOrders = orders.filter((o) => o.paymentStatus === 'paid').length;
     const codOrders = orders.filter((o) => o.paymentMethod === 'cod').length;
     const prepaidOrders = orders.filter((o) => o.paymentMethod !== 'cod').length;
     const avgOrderValue = totalOrders ? Math.round(totalRevenue / totalOrders) : 0;
 
-    const statusBreakdown = ['confirmed', 'paid', 'shipped', 'delivered', 'cancelled'].map((status) => {
-      const count = orders.filter((o) => o.status === status).length;
+    const normalizeOrderStatus = (status) =>
+      status === 'confirmed' ? 'ordered' : status === 'paid' ? 'accepted' : status;
+
+    const statusBreakdown = ['ordered', 'accepted', 'packed', 'shipped', 'delivered', 'cancelled'].map((status) => {
+      const count = orders.filter((o) => normalizeOrderStatus(o.status) === status).length;
       return { status, count, pct: safePercent(count, totalOrders) };
     });
 
-    const paymentBreakdown = ['upi', 'card'].map((method) => {
+    const paymentBreakdown = ['upi', 'card', 'razorpay', 'cash', 'cod'].map((method) => {
       const count = orders.filter((o) => o.paymentMethod === method).length;
-      return { method, count, pct: safePercent(count, totalOrders) };
-    });
+      return { method, count, revenue: orders.filter((o) => o.paymentMethod === method).reduce((s, o) => s + (o.total || 0), 0), pct: safePercent(count, totalOrders) };
+    }).filter((p) => p.count > 0);
 
     const dailyMap = new Map();
     for (let i = 0; i < days; i += 1) {
@@ -857,14 +1025,15 @@ app.get('/api/admin/reports/overview', protect, admin, async (req, res) => {
       if (!bucket) continue;
       bucket.orders += 1;
       bucket.revenue += order.total || 0;
-      if (order.status === 'delivered') bucket.delivered += 1;
-      if (order.status === 'cancelled') bucket.cancelled += 1;
+      if (normalizeOrderStatus(order.status) === 'delivered') bucket.delivered += 1;
+      if (normalizeOrderStatus(order.status) === 'cancelled') bucket.cancelled += 1;
     }
 
     const dailyTrend = Array.from(dailyMap.values());
 
     const productMap = new Map();
     for (const order of orders) {
+      const seen = new Set();
       for (const item of order.items || []) {
         const current = productMap.get(item.id) || {
           id: item.id,
@@ -875,13 +1044,14 @@ app.get('/api/admin/reports/overview', protect, admin, async (req, res) => {
         };
         current.units += Number(item.qty) || 0;
         current.revenue += Number(item.lineTotal) || 0;
-        current.orders += 1;
+        if (!seen.has(item.id)) {
+          current.orders += 1;
+          seen.add(item.id);
+        }
         productMap.set(item.id, current);
       }
     }
-    const topProducts = Array.from(productMap.values())
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 8);
+    const topProducts = Array.from(productMap.values()).sort((a, b) => b.revenue - a.revenue);
 
     const customerMap = new Map();
     for (const order of orders) {
@@ -889,6 +1059,7 @@ app.get('/api/admin/reports/overview', protect, admin, async (req, res) => {
       const current = customerMap.get(email) || {
         email,
         name: order.customer?.name || 'Customer',
+        phone: order.customer?.phone || '',
         orders: 0,
         spend: 0,
       };
@@ -896,9 +1067,29 @@ app.get('/api/admin/reports/overview', protect, admin, async (req, res) => {
       current.spend += order.total || 0;
       customerMap.set(email, current);
     }
-    const topCustomers = Array.from(customerMap.values())
-      .sort((a, b) => b.spend - a.spend)
-      .slice(0, 5);
+    const topCustomers = Array.from(customerMap.values()).sort((a, b) => b.spend - a.spend);
+
+    const drillOrders = orders.map((o) => ({
+      orderId: o.orderId,
+      createdAt: o.createdAt,
+      date: toYmd(new Date(o.createdAt)),
+      status: normalizeOrderStatus(o.status),
+      paymentMethod: o.paymentMethod,
+      paymentStatus: o.paymentStatus,
+      total: o.total || 0,
+      customerName: o.customer?.name || '',
+      customerEmail: o.customer?.email || '',
+      customerPhone: o.customer?.phone || '',
+      itemCount: (o.items || []).reduce((sum, item) => sum + (Number(item.qty) || 0), 0),
+      items: (o.items || []).map((item) => ({
+        id: item.id,
+        name: item.name,
+        qty: item.qty,
+        sizeLabel: item.sizeLabel,
+        weightLabel: item.weightLabel,
+        lineTotal: item.lineTotal,
+      })),
+    })).reverse();
 
     res.json({
       range: { days, start, end },
@@ -920,6 +1111,7 @@ app.get('/api/admin/reports/overview', protect, admin, async (req, res) => {
       dailyTrend,
       topProducts,
       topCustomers,
+      drillOrders,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -975,10 +1167,7 @@ app.post('/api/admin/upload', protect, admin, (req, res) => {
       );
 
       // Prefer absolute Render URLs so Netlify admin previews work immediately
-      const publicOrigin = (
-        process.env.PUBLIC_API_URL ||
-        `${req.get('x-forwarded-proto') || req.protocol}://${req.get('host')}`
-      ).replace(/\/$/, '');
+      const publicOrigin = publicApiOrigin(req);
       const urls = docs.map((doc) => `${publicOrigin}/api/media/${doc._id}`);
       res.json({ ok: true, urls });
     } catch (e) {
@@ -988,33 +1177,56 @@ app.post('/api/admin/upload', protect, admin, (req, res) => {
   });
 });
 
-/** Serve product images stored in MongoDB */
+/** Serve product images (Media) + marketing videos (GridFS) from MongoDB */
 app.get('/api/media/:id', async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(404).json({ error: 'Image not found' });
+      return res.status(404).json({ error: 'Media not found' });
+    }
+    const objectId = new mongoose.Types.ObjectId(req.params.id);
+
+    // 1) Product / status images in Media collection
+    const doc = await Media.findById(objectId).select('+data');
+    if (doc?.data) {
+      let buf = doc.data;
+      if (!Buffer.isBuffer(buf)) {
+        if (buf?.buffer) buf = Buffer.from(buf.buffer);
+        else if (Array.isArray(buf)) buf = Buffer.from(buf);
+        else buf = Buffer.from(buf);
+      }
+
+      res.status(200);
+      res.setHeader('Content-Type', doc.contentType || 'image/jpeg');
+      res.setHeader('Content-Length', String(buf.length));
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      return res.end(buf);
     }
 
-    // Do not use lean() — Binary buffers need the Mongoose Buffer type
-    const doc = await Media.findById(req.params.id).select('+data');
-    if (!doc?.data) return res.status(404).json({ error: 'Image not found' });
-
-    let buf = doc.data;
-    if (!Buffer.isBuffer(buf)) {
-      if (buf?.buffer) buf = Buffer.from(buf.buffer);
-      else if (Array.isArray(buf)) buf = Buffer.from(buf);
-      else buf = Buffer.from(buf);
+    // 2) Marketing videos / larger files in GridFS
+    const bucket = getMarketingBucket();
+    const files = await bucket.find({ _id: objectId }).toArray();
+    if (!files.length) {
+      return res.status(404).json({ error: 'Media not found' });
     }
 
+    const file = files[0];
     res.status(200);
-    res.setHeader('Content-Type', doc.contentType || 'image/jpeg');
-    res.setHeader('Content-Length', String(buf.length));
+    res.setHeader('Content-Type', file.contentType || 'application/octet-stream');
+    if (file.length != null) res.setHeader('Content-Length', String(file.length));
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    return res.end(buf);
+    res.setHeader('Accept-Ranges', 'bytes');
+
+    const download = bucket.openDownloadStream(objectId);
+    download.on('error', (err) => {
+      console.error('GridFS serve error:', err);
+      if (!res.headersSent) res.status(500).json({ error: 'Failed to load media' });
+      else res.end();
+    });
+    return download.pipe(res);
   } catch (err) {
     console.error('Media serve error:', err);
     if (!res.headersSent) {
-      res.status(500).json({ error: err.message || 'Failed to load image' });
+      res.status(500).json({ error: err.message || 'Failed to load media' });
     }
   }
 });
@@ -1055,6 +1267,100 @@ app.get('/api/admin/customers', protect, admin, async (req, res) => {
 
     const customers = Object.values(customersMap).sort((a, b) => b.totalSpent - a.totalSpent);
     res.json({ customers });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Store billing (physical shop / walk-in sales) ────────────────────────────
+const STORE_BILL_METHODS = ['cash', 'upi', 'card'];
+
+function sanitizeStoreBillInput(body = {}) {
+  const itemName = String(body.itemName || body.title || '').trim();
+  if (!itemName) throw new Error('Item / product name is required');
+
+  const unitPrice = Math.max(0, Number(body.unitPrice) || Number(body.amount) || 0);
+  const qty = Math.max(1, Number(body.qty) || 1);
+  const discount = Math.max(0, Number(body.discount) || 0);
+  const gross = unitPrice * qty;
+  const amount = Math.max(0, Number.isFinite(Number(body.amount)) ? Number(body.amount) : gross - discount);
+  if (!Number.isFinite(amount) || amount < 0) throw new Error('Valid amount is required');
+
+  const paymentMethod = STORE_BILL_METHODS.includes(body.paymentMethod)
+    ? body.paymentMethod
+    : 'cash';
+
+  const soldAt = body.soldAt ? new Date(body.soldAt) : new Date();
+
+  return {
+    customerName: String(body.customerName || '').trim(),
+    customerPhone: String(body.customerPhone || '').trim(),
+    productId: String(body.productId || '').trim(),
+    itemName,
+    sizeId: String(body.sizeId || '').trim(),
+    sizeLabel: String(body.sizeLabel || '').trim(),
+    weightId: String(body.weightId || '').trim(),
+    weightLabel: String(body.weightLabel || '').trim(),
+    qty,
+    unitPrice,
+    discount: Math.min(discount, gross),
+    amount,
+    paymentMethod,
+    soldAt: Number.isNaN(soldAt.getTime()) ? new Date() : soldAt,
+    notes: String(body.notes || '').trim(),
+  };
+}
+
+app.get('/api/admin/store-bills', protect, admin, async (_req, res) => {
+  try {
+    const bills = await StoreBill.find().sort({ soldAt: -1, createdAt: -1 }).lean();
+    const totals = bills.reduce(
+      (acc, b) => {
+        acc.totalSales += b.amount || 0;
+        acc.bills += 1;
+        const method = b.paymentMethod || 'cash';
+        acc.byMethod[method] = (acc.byMethod[method] || 0) + (b.amount || 0);
+        return acc;
+      },
+      { totalSales: 0, bills: 0, byMethod: { cash: 0, upi: 0, card: 0 } }
+    );
+    res.json({ bills, totals, count: bills.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/store-bills', protect, admin, async (req, res) => {
+  try {
+    const data = sanitizeStoreBillInput(req.body);
+    const billId = `SH-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 900 + 100)}`;
+    const bill = await StoreBill.create({ ...data, billId });
+    res.status(201).json({ ok: true, bill });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/store-bills/:id', protect, admin, async (req, res) => {
+  try {
+    const data = sanitizeStoreBillInput(req.body);
+    const bill = await StoreBill.findOneAndUpdate(
+      { billId: req.params.id },
+      { $set: data },
+      { new: true, runValidators: true }
+    );
+    if (!bill) return res.status(404).json({ error: 'Store bill not found' });
+    res.json({ ok: true, bill });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/store-bills/:id', protect, admin, async (req, res) => {
+  try {
+    const bill = await StoreBill.findOneAndDelete({ billId: req.params.id });
+    if (!bill) return res.status(404).json({ error: 'Store bill not found' });
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

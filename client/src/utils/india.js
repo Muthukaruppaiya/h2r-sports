@@ -20,7 +20,7 @@ export const BRAND = {
   currency: 'INR',
   gstNote: 'Inclusive of GST',
   shippingNote: 'All India Free Shipping',
-  returnsNote: '6 months handle warranty · Prepaid orders',
+  returnsNote: 'No refund · No COD · 6 months handle warranty',
 };
 
 export function formatINR(amount) {

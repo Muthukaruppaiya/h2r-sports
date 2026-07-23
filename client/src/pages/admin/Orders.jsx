@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import api from '../../api/client';
 import {
   getStatusLabel,
   getStatusStyle,
   getAllowedNextStatuses,
   getStageIndex,
+  normalizeStatus,
   ORDER_STATUSES,
   STATUS_LABELS,
   PAYMENT_STATUS_LABELS,
@@ -12,65 +13,110 @@ import {
   formatStatusDate,
 } from '../../utils/orderStatus';
 
-function StatusBadge({ status, size = 'md' }) {
-  const style = getStatusStyle(status);
-  const padding = size === 'sm' ? '0.25rem 0.6rem' : '0.35rem 0.8rem';
-  const fontSize = size === 'sm' ? '0.7rem' : '0.75rem';
+function money(n) {
+  return `₹${Number(n || 0).toLocaleString('en-IN')}`;
+}
 
+function StatusBadge({ status }) {
+  const style = getStatusStyle(status);
   return (
     <span
-      style={{
-        display: 'inline-block',
-        padding,
-        borderRadius: '999px',
-        fontSize,
-        fontWeight: '700',
-        textTransform: 'uppercase',
-        letterSpacing: '0.03em',
-        background: style.bg,
-        color: style.color,
-        border: `1px solid ${style.border}`,
-        whiteSpace: 'nowrap',
-      }}
+      className="adm-pill"
+      style={{ background: style.bg, color: style.color, border: `1px solid ${style.border}` }}
     >
       {getStatusLabel(status)}
     </span>
   );
 }
 
-function StatusSelect({ order, onChange, disabled, updating }) {
-  const options = getAllowedNextStatuses(order.status);
+function printAddressLabels(orders) {
+  const win = window.open('', '_blank', 'width=800,height=900');
+  if (!win) {
+    alert('Allow pop-ups to print address labels');
+    return;
+  }
+  const pages = orders
+    .map((order, index) => {
+      const s = order.shipping || {};
+      const c = order.customer || {};
+      return `
+        <section class="page">
+          <div class="label">
+            <div class="brand">H2R Sports — Shipping Label</div>
+            <div class="meta">Page ${index + 1} of ${orders.length}</div>
+            <div class="oid">Order #${String(order.orderId || '').slice(0, 14).toUpperCase()}</div>
+            <div class="to">Ship to</div>
+            <div class="name">${c.name || ''}</div>
+            <div class="addr">
+              ${s.addressLine1 || ''}<br/>
+              ${s.addressLine2 ? `${s.addressLine2}<br/>` : ''}
+              ${s.city || ''}, ${s.state || ''} — ${s.pincode || ''}<br/>
+              Phone: ${c.phone || ''}
+            </div>
+            <div class="items">
+              ${(order.items || [])
+                .map(
+                  (i) =>
+                    `${i.qty}× ${i.name}${i.sizeLabel ? ` (${i.sizeLabel})` : ''}${
+                      i.weightLabel ? ` · ${i.weightLabel}` : ''
+                    }`
+                )
+                .join('<br/>')}
+            </div>
+          </div>
+        </section>
+      `;
+    })
+    .join('');
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', minWidth: '140px' }}>
-      <select
-        value={order.status}
-        disabled={disabled || updating}
-        onChange={(e) => onChange(order, e.target.value)}
-        style={{
-          padding: '0.5rem 0.65rem',
-          borderRadius: '8px',
-          border: '1px solid #cbd5e1',
-          background: updating ? '#f8fafc' : 'white',
-          outline: 'none',
-          cursor: disabled || updating ? 'not-allowed' : 'pointer',
-          fontSize: '0.875rem',
-          fontWeight: '600',
-          color: '#0f172a',
-          opacity: updating ? 0.7 : 1,
-        }}
-      >
-        {options.map((status) => (
-          <option key={status} value={status}>
-            {STATUS_LABELS[status]}
-          </option>
-        ))}
-      </select>
-      {updating && (
-        <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Updating...</span>
-      )}
-    </div>
-  );
+  win.document.write(`<!doctype html><html><head><title>Address Labels</title>
+    <style>
+      @page { size: A4; margin: 14mm; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body { font-family: 'Segoe UI', system-ui, sans-serif; color: #0f172a; }
+      .page {
+        width: 100%;
+        min-height: 100vh;
+        page-break-after: always;
+        break-after: page;
+        display: flex;
+        align-items: flex-start;
+        padding-top: 8mm;
+      }
+      .page:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
+      .label {
+        width: 100%;
+        border: 2px solid #0f172a;
+        border-radius: 12px;
+        padding: 22px 24px;
+      }
+      .brand { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #64748b; }
+      .meta { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+      .oid { font-weight: 800; font-size: 22px; margin: 14px 0 18px; }
+      .to { font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 700; }
+      .name { font-size: 26px; font-weight: 800; margin: 6px 0 10px; }
+      .addr { font-size: 16px; line-height: 1.6; }
+      .items { margin-top: 22px; padding-top: 14px; border-top: 1px dashed #cbd5e1; font-size: 13px; color: #475569; }
+      @media print {
+        .page {
+          min-height: auto;
+          height: 100vh;
+          page-break-after: always;
+          break-after: page;
+        }
+        .page:last-child {
+          page-break-after: auto;
+          break-after: auto;
+        }
+      }
+    </style></head><body>${pages}
+    <script>window.onload = () => { setTimeout(() => window.print(), 250); }</script>
+    </body></html>`);
+  win.document.close();
 }
 
 export default function Orders() {
@@ -81,6 +127,14 @@ export default function Orders() {
   const [searchQuery, setSearchQuery] = useState('');
   const [updatingId, setUpdatingId] = useState(null);
   const [toast, setToast] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [courierModal, setCourierModal] = useState(null);
+  const [courierForm, setCourierForm] = useState({
+    name: '',
+    trackingId: '',
+    trackingUrl: '',
+    notes: '',
+  });
 
   useEffect(() => {
     fetchOrders();
@@ -106,23 +160,18 @@ export default function Orders() {
 
   const showToast = (type, message) => setToast({ type, message });
 
-  const updateStatus = async (order, newStatus) => {
-    if (order.status === newStatus) return;
-
-    if (newStatus === 'cancelled') {
-      const confirmed = window.confirm(
-        `Cancel order ${order.orderId}? This cannot be undone.`
-      );
-      if (!confirmed) return;
-    }
-
+  const applyStatus = async (order, newStatus, courier = null) => {
     setUpdatingId(order.orderId);
     try {
-      const res = await api.put(`/admin/orders/${order.orderId}/status`, { status: newStatus });
+      const res = await api.put(`/admin/orders/${order.orderId}/status`, {
+        status: newStatus,
+        courier,
+      });
       const updated = res.data.order;
       setOrders((prev) => prev.map((o) => (o.orderId === updated.orderId ? updated : o)));
       if (selectedOrder?.orderId === updated.orderId) setSelectedOrder(updated);
-      showToast('success', `Order updated to ${STATUS_LABELS[newStatus]}`);
+      showToast('success', `Order updated to ${STATUS_LABELS[normalizeStatus(newStatus)]}`);
+      setCourierModal(null);
     } catch (err) {
       const message = err.response?.data?.error || 'Failed to update status';
       showToast('error', message);
@@ -132,13 +181,43 @@ export default function Orders() {
     }
   };
 
-  const statusCounts = ORDER_STATUSES.reduce((acc, status) => {
-    acc[status] = orders.filter((o) => o.status === status).length;
-    return acc;
-  }, { all: orders.length });
+  const requestStatusChange = async (order, newStatus) => {
+    const current = normalizeStatus(order.status);
+    const next = normalizeStatus(newStatus);
+    if (current === next) return;
+
+    if (next === 'cancelled') {
+      const confirmed = window.confirm(`Cancel order ${order.orderId}? This cannot be undone.`);
+      if (!confirmed) return;
+    }
+
+    if (next === 'shipped') {
+      setCourierForm({
+        name: order.courier?.name || '',
+        trackingId: order.courier?.trackingId || '',
+        trackingUrl: order.courier?.trackingUrl || '',
+        notes: order.courier?.notes || '',
+      });
+      setCourierModal({ order, status: next });
+      return;
+    }
+
+    await applyStatus(order, next);
+  };
+
+  const statusCounts = useMemo(() => {
+    const counts = { all: orders.length };
+    ORDER_STATUSES.forEach((status) => {
+      counts[status] = orders.filter((o) => normalizeStatus(o.status) === status).length;
+    });
+    return counts;
+  }, [orders]);
 
   const filteredOrders = orders.filter((order) => {
-    const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+    const status = normalizeStatus(order.status);
+    const matchesStatus =
+      statusFilter === 'all' ||
+      (statusFilter === 'pending_courier' ? status === 'packed' : status === statusFilter);
     const q = searchQuery.trim().toLowerCase();
     if (!q) return matchesStatus;
     const haystack = [
@@ -146,6 +225,7 @@ export default function Orders() {
       order.customer?.name,
       order.customer?.email,
       order.customer?.phone,
+      order.courier?.trackingId,
     ]
       .filter(Boolean)
       .join(' ')
@@ -153,16 +233,49 @@ export default function Orders() {
     return matchesStatus && haystack.includes(q);
   });
 
-  if (loading) {
-    return (
-      <div style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>
-        Loading orders...
-      </div>
+  const pendingCourier = useMemo(
+    () => orders.filter((o) => normalizeStatus(o.status) === 'packed'),
+    [orders]
+  );
+
+  // Only Packed orders can stay selected for courier address print
+  useEffect(() => {
+    const packedIds = new Set(pendingCourier.map((o) => o.orderId));
+    setSelectedIds((prev) => prev.filter((id) => packedIds.has(id)));
+  }, [pendingCourier]);
+
+  const allPendingSelected =
+    pendingCourier.length > 0 && pendingCourier.every((o) => selectedIds.includes(o.orderId));
+
+  const toggleSelect = (order) => {
+    if (normalizeStatus(order.status) !== 'packed') return;
+    const orderId = order.orderId;
+    setSelectedIds((prev) =>
+      prev.includes(orderId) ? prev.filter((id) => id !== orderId) : [...prev, orderId]
     );
-  }
+  };
+
+  const toggleSelectAllPending = () => {
+    if (allPendingSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(pendingCourier.map((o) => o.orderId));
+    }
+  };
+
+  const printSelected = () => {
+    const toPrint = pendingCourier.filter((o) => selectedIds.includes(o.orderId));
+    if (!toPrint.length) {
+      showToast('error', 'Select Packed (pending courier) orders only');
+      return;
+    }
+    printAddressLabels(toPrint);
+  };
+
+  if (loading) return <div className="adm-empty">Loading orders…</div>;
 
   return (
-    <div style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div className="adm-page">
       {toast && (
         <div
           style={{
@@ -174,7 +287,7 @@ export default function Orders() {
             borderRadius: '10px',
             background: toast.type === 'success' ? '#166534' : '#991b1b',
             color: 'white',
-            fontWeight: '600',
+            fontWeight: 600,
             fontSize: '0.9rem',
             boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
           }}
@@ -183,204 +296,275 @@ export default function Orders() {
         </div>
       )}
 
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          marginBottom: '1.5rem',
-          flexWrap: 'wrap',
-          gap: '1rem',
-        }}
-      >
+      <div className="adm-page__head">
         <div>
-          <h1 style={{ margin: 0, color: '#0f172a', fontSize: '1.875rem', fontWeight: '800' }}>
-            Orders
-          </h1>
-          <p style={{ margin: '0.35rem 0 0', color: '#64748b', fontSize: '0.95rem' }}>
-            Manage fulfillment workflow — Confirmed → Paid → Shipped → Delivered
-          </p>
+          <h1>Online Orders</h1>
+          <p>Ordered → Accepted → Packed → Shipped (courier) → Delivered</p>
         </div>
-        <input
-          type="search"
-          placeholder="Search order ID, name, email..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          style={{
-            padding: '0.65rem 1rem',
-            borderRadius: '8px',
-            border: '1px solid #cbd5e1',
-            minWidth: '280px',
-            fontSize: '0.9rem',
-            outline: 'none',
-          }}
-        />
+        <div className="adm-page__actions">
+          <button
+            type="button"
+            className="adm-btn adm-btn--ghost"
+            onClick={() => setStatusFilter('pending_courier')}
+          >
+            Pending courier ({statusCounts.packed || 0})
+          </button>
+          <button type="button" className="adm-btn adm-btn--primary" onClick={printSelected}>
+            Print addresses ({selectedIds.length})
+          </button>
+        </div>
       </div>
 
-      {/* Status filter tabs — Zoho-style */}
-      <div
-        style={{
-          display: 'flex',
-          gap: '0.5rem',
-          flexWrap: 'wrap',
-          marginBottom: '1.5rem',
-        }}
-      >
+      <div className="adm-filters" style={{ gridTemplateColumns: '1.4fr repeat(auto-fit, minmax(120px, 1fr))' }}>
+        <div className="adm-field">
+          <label>Search</label>
+          <input
+            type="search"
+            placeholder="Order ID, name, email, tracking…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="adm-tabs" style={{ display: 'flex', width: '100%', marginBottom: '1rem' }}>
         {[
-          { key: 'all', label: 'All Orders' },
+          { key: 'all', label: 'All' },
+          { key: 'pending_courier', label: 'Pending courier' },
           ...ORDER_STATUSES.map((s) => ({ key: s, label: STATUS_LABELS[s] })),
         ].map(({ key, label }) => (
           <button
             key={key}
             type="button"
+            className={`adm-tabs__btn${statusFilter === key ? ' is-active' : ''}`}
             onClick={() => setStatusFilter(key)}
-            style={{
-              padding: '0.5rem 1rem',
-              borderRadius: '999px',
-              border: statusFilter === key ? '2px solid #2563eb' : '1px solid #e2e8f0',
-              background: statusFilter === key ? '#eff6ff' : 'white',
-              color: statusFilter === key ? '#1d4ed8' : '#475569',
-              fontWeight: '600',
-              fontSize: '0.85rem',
-              cursor: 'pointer',
-            }}
           >
             {label}
-            <span
-              style={{
-                marginLeft: '0.4rem',
-                opacity: 0.8,
-                fontWeight: '700',
-              }}
-            >
-              ({statusCounts[key] ?? 0})
+            <span style={{ marginLeft: 6, opacity: 0.85 }}>
+              (
+              {key === 'all'
+                ? statusCounts.all
+                : key === 'pending_courier'
+                  ? statusCounts.packed || 0
+                  : statusCounts[key] || 0}
+              )
             </span>
           </button>
         ))}
       </div>
 
-      <div
-        style={{
-          background: 'white',
-          borderRadius: '16px',
-          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
-          border: '1px solid #f1f5f9',
-          overflow: 'hidden',
-        }}
-      >
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '900px' }}>
-            <thead>
-              <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                {['Order', 'Customer', 'Items', 'Payment', 'Total', 'Status', 'Actions'].map((col) => (
-                  <th
-                    key={col}
-                    style={{
-                      padding: '1rem',
-                      color: '#475569',
-                      fontWeight: '700',
-                      fontSize: '0.75rem',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em',
-                    }}
-                  >
-                    {col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredOrders.map((order) => (
-                <tr
-                  key={order.orderId}
-                  style={{ borderBottom: '1px solid #f1f5f9' }}
-                >
-                  <td style={{ padding: '1rem' }}>
-                    <div style={{ fontWeight: '700', color: '#0f172a', fontSize: '0.9rem' }}>
-                      #{order.orderId.substring(0, 12)}
-                    </div>
-                    <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.2rem' }}>
-                      {new Date(order.createdAt).toLocaleString('en-IN', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </div>
-                  </td>
-                  <td style={{ padding: '1rem' }}>
-                    <div style={{ fontWeight: '600', color: '#334155' }}>{order.customer.name}</div>
-                    <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{order.customer.email}</div>
-                    <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{order.customer.phone}</div>
-                  </td>
-                  <td style={{ padding: '1rem', fontSize: '0.85rem', color: '#475569', maxWidth: '220px' }}>
-                    {order.items.map((item) => (
-                      <div key={`${item.id}-${item.sizeId}`} style={{ marginBottom: '0.25rem' }}>
-                        {item.qty}× {item.name}
-                        <span style={{ color: '#94a3b8' }}> ({item.sizeLabel})</span>
-                      </div>
-                    ))}
-                  </td>
-                  <td style={{ padding: '1rem' }}>
-                    <div style={{ fontWeight: '600', fontSize: '0.85rem', textTransform: 'uppercase', color: '#334155' }}>
-                      {order.paymentMethod}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
-                      {PAYMENT_STATUS_LABELS[order.paymentStatus] || order.paymentStatus}
-                    </div>
-                  </td>
-                  <td style={{ padding: '1rem', fontWeight: '700', color: '#0f172a' }}>
-                    ₹{order.total.toLocaleString('en-IN')}
-                  </td>
-                  <td style={{ padding: '1rem' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-start' }}>
-                      <StatusBadge status={order.status} />
-                      <StatusSelect
-                        order={order}
-                        onChange={updateStatus}
-                        disabled={order.status === 'delivered' || order.status === 'cancelled'}
-                        updating={updatingId === order.orderId}
-                      />
-                    </div>
-                  </td>
-                  <td style={{ padding: '1rem' }}>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedOrder(order)}
-                      style={{
-                        padding: '0.5rem 1rem',
-                        background: '#f8fafc',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '8px',
-                        cursor: 'pointer',
-                        fontWeight: '600',
-                        fontSize: '0.85rem',
-                        color: '#0f172a',
-                      }}
-                    >
-                      View
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {filteredOrders.length === 0 && (
-                <tr>
-                  <td colSpan={7} style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>
-                    {orders.length === 0 ? 'No orders yet.' : 'No orders match your filters.'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      <div className="adm-panel">
+        <div className="adm-panel__head">
+          <h2>Fulfillment queue</h2>
+          {statusFilter === 'pending_courier' || pendingCourier.length > 0 ? (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', color: '#64748b' }}>
+              <input type="checkbox" checked={allPendingSelected} onChange={toggleSelectAllPending} />
+              Select all pending courier
+            </label>
+          ) : null}
         </div>
+
+        {filteredOrders.length === 0 ? (
+          <div className="adm-empty">No orders match this filter.</div>
+        ) : (
+          <div className="adm-table-wrap">
+            <table className="adm-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 42 }} />
+                  <th>Order</th>
+                  <th>Customer</th>
+                  <th>Items</th>
+                  <th>Payment</th>
+                  <th>Total</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredOrders.map((order) => {
+                  const status = normalizeStatus(order.status);
+                  const isPendingCourier = status === 'packed';
+                  return (
+                    <tr key={order.orderId}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={isPendingCourier && selectedIds.includes(order.orderId)}
+                          disabled={!isPendingCourier}
+                          onChange={() => toggleSelect(order)}
+                          title={
+                            isPendingCourier
+                              ? 'Select for address print'
+                              : 'Only Packed (pending courier) orders can be selected'
+                          }
+                        />
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 750, color: '#0f172a' }}>
+                          #{String(order.orderId).substring(0, 12)}
+                        </div>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                          {new Date(order.createdAt).toLocaleString('en-IN', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{order.customer.name}</div>
+                        <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{order.customer.email}</div>
+                        <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{order.customer.phone}</div>
+                      </td>
+                      <td style={{ fontSize: '0.85rem', maxWidth: 220 }}>
+                        {order.items.map((item) => (
+                          <div key={`${item.id}-${item.sizeId}`} style={{ marginBottom: 4 }}>
+                            {item.qty}× {item.name}
+                            <span style={{ color: '#94a3b8' }}>
+                              {' '}
+                              ({item.sizeLabel}
+                              {item.weightLabel ? ` · ${item.weightLabel}` : ''})
+                            </span>
+                          </div>
+                        ))}
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.82rem' }}>
+                          {order.paymentMethod}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                          {PAYMENT_STATUS_LABELS[order.paymentStatus] || order.paymentStatus}
+                        </div>
+                      </td>
+                      <td style={{ fontWeight: 750 }}>{money(order.total)}</td>
+                      <td>
+                        <div style={{ display: 'grid', gap: 8 }}>
+                          <StatusBadge status={order.status} />
+                          <select
+                            className="adm-field"
+                            value={status}
+                            disabled={
+                              status === 'delivered' ||
+                              status === 'cancelled' ||
+                              updatingId === order.orderId
+                            }
+                            onChange={(e) => requestStatusChange(order, e.target.value)}
+                            style={{
+                              padding: '0.45rem 0.55rem',
+                              borderRadius: 8,
+                              border: '1px solid #cbd5e1',
+                              fontWeight: 600,
+                              fontSize: '0.82rem',
+                            }}
+                          >
+                            {getAllowedNextStatuses(order.status).map((s) => (
+                              <option key={s} value={s}>
+                                {STATUS_LABELS[s]}
+                              </option>
+                            ))}
+                          </select>
+                          {order.courier?.trackingId && (
+                            <div style={{ fontSize: '0.75rem', color: '#4338ca' }}>
+                              {order.courier.name}: {order.courier.trackingId}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="adm-btn adm-btn--ghost"
+                          onClick={() => setSelectedOrder(order)}
+                        >
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
+      {courierModal && (
+        <div className="adm-drawer-backdrop" onClick={() => setCourierModal(null)}>
+          <aside className="adm-drawer" onClick={(e) => e.stopPropagation()} style={{ width: 'min(440px, 100%)' }}>
+            <div className="adm-drawer__head">
+              <strong>Courier details</strong>
+              <button type="button" className="adm-btn adm-btn--ghost" onClick={() => setCourierModal(null)}>
+                Close
+              </button>
+            </div>
+            <form
+              className="adm-drawer__body"
+              onSubmit={(e) => {
+                e.preventDefault();
+                applyStatus(courierModal.order, courierModal.status, courierForm);
+              }}
+            >
+              <p style={{ margin: '0 0 1rem', color: '#64748b', fontSize: '0.9rem' }}>
+                Enter courier info for #{String(courierModal.order.orderId).slice(0, 12)}. Customers will see
+                this for tracking.
+              </p>
+              <div className="adm-form-grid">
+                <div className="adm-field adm-field--full">
+                  <label>Courier name *</label>
+                  <input
+                    required
+                    value={courierForm.name}
+                    onChange={(e) => setCourierForm((p) => ({ ...p, name: e.target.value }))}
+                    placeholder="e.g. DTDC / Delhivery / India Post"
+                  />
+                </div>
+                <div className="adm-field adm-field--full">
+                  <label>Tracking ID *</label>
+                  <input
+                    required
+                    value={courierForm.trackingId}
+                    onChange={(e) => setCourierForm((p) => ({ ...p, trackingId: e.target.value }))}
+                    placeholder="AWB / tracking number"
+                  />
+                </div>
+                <div className="adm-field adm-field--full">
+                  <label>Tracking URL</label>
+                  <input
+                    value={courierForm.trackingUrl}
+                    onChange={(e) => setCourierForm((p) => ({ ...p, trackingUrl: e.target.value }))}
+                    placeholder="https://…"
+                  />
+                </div>
+                <div className="adm-field adm-field--full">
+                  <label>Notes</label>
+                  <textarea
+                    rows={3}
+                    value={courierForm.notes}
+                    onChange={(e) => setCourierForm((p) => ({ ...p, notes: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                <button type="submit" className="adm-btn adm-btn--primary">
+                  Mark shipped
+                </button>
+                <button type="button" className="adm-btn adm-btn--ghost" onClick={() => setCourierModal(null)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </aside>
+        </div>
+      )}
+
       {selectedOrder && (
-        <OrderDetailsModal
+        <OrderDetailDrawer
           order={selectedOrder}
           onClose={() => setSelectedOrder(null)}
-          onStatusChange={updateStatus}
+          onStatusChange={requestStatusChange}
           updating={updatingId === selectedOrder.orderId}
         />
       )}
@@ -388,209 +572,123 @@ export default function Orders() {
   );
 }
 
-function OrderDetailsModal({ order, onClose, onStatusChange, updating }) {
-  const currentStageIndex = getEffectiveStageIndex(order);
+function OrderDetailDrawer({ order, onClose, onStatusChange, updating }) {
+  const status = normalizeStatus(order.status);
+  const stageIndex = getStageIndex(order.status);
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(15, 23, 42, 0.5)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000,
-        padding: '1rem',
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: 'white',
-          borderRadius: '16px',
-          width: '100%',
-          maxWidth: '640px',
-          maxHeight: '90vh',
-          overflowY: 'auto',
-          boxShadow: '0 25px 50px rgba(0,0,0,0.2)',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div
-          style={{
-            padding: '1.5rem 1.75rem',
-            borderBottom: '1px solid #f1f5f9',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-          }}
-        >
-          <div>
-            <h2 style={{ margin: 0, color: '#0f172a', fontSize: '1.25rem' }}>
-              Order #{order.orderId}
-            </h2>
-            <p style={{ margin: '0.35rem 0 0', color: '#64748b', fontSize: '0.9rem' }}>
-              Placed {formatStatusDate(order.createdAt)}
-            </p>
-          </div>
-          <StatusBadge status={order.status} />
-        </div>
-
-        <div style={{ padding: '1.5rem 1.75rem' }}>
-          <section style={{ marginBottom: '1.5rem' }}>
-            <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Update Status
-            </h3>
-            <StatusSelect
-              order={order}
-              onChange={onStatusChange}
-              disabled={order.status === 'delivered' || order.status === 'cancelled'}
-              updating={updating}
-            />
-          </section>
-
-          {order.status !== 'cancelled' && (
-            <section style={{ marginBottom: '1.5rem' }}>
-              <h3 style={{ margin: '0 0 1rem', fontSize: '0.8rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Fulfillment Timeline
-              </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {STATUS_STAGES.map((stage, stageIdx) => {
-                  const isDone = currentStageIndex >= 0 && stageIdx <= currentStageIndex;
-                  const at = order.statusTimestamps?.[`${stage.id}At`];
-                  return (
-                    <div
-                      key={stage.id}
-                      style={{
-                        display: 'flex',
-                        gap: '0.75rem',
-                        alignItems: 'flex-start',
-                        opacity: isDone ? 1 : 0.45,
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: '10px',
-                          height: '10px',
-                          borderRadius: '50%',
-                          marginTop: '0.35rem',
-                          background: isDone ? '#16a34a' : '#e2e8f0',
-                          flexShrink: 0,
-                        }}
-                      />
-                      <div>
-                        <div style={{ fontWeight: '600', color: '#0f172a', fontSize: '0.9rem' }}>
-                          {stage.label}
-                        </div>
-                        {at && (
-                          <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                            {formatStatusDate(at)}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-
-          <section style={{ marginBottom: '1.5rem' }}>
-            <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Customer
-            </h3>
-            <p style={{ margin: '0.25rem 0', color: '#334155' }}>{order.customer.name}</p>
-            <p style={{ margin: '0.25rem 0', color: '#64748b', fontSize: '0.9rem' }}>{order.customer.email}</p>
-            <p style={{ margin: '0.25rem 0', color: '#64748b', fontSize: '0.9rem' }}>{order.customer.phone}</p>
-          </section>
-
-          <section style={{ marginBottom: '1.5rem' }}>
-            <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Shipping
-            </h3>
-            <p style={{ margin: 0, color: '#334155', lineHeight: 1.6 }}>
-              {order.shipping.addressLine1}
-              {order.shipping.addressLine2 && <><br />{order.shipping.addressLine2}</>}
-              <br />
-              {order.shipping.city}, {order.shipping.state} — {order.shipping.pincode}
-            </p>
-          </section>
-
-          <section style={{ marginBottom: '1.5rem' }}>
-            <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Payment
-            </h3>
-            <p style={{ margin: '0.25rem 0', color: '#334155' }}>
-              Method: <strong>{order.paymentMethod.toUpperCase()}</strong>
-            </p>
-            <p style={{ margin: '0.25rem 0', color: '#334155' }}>
-              Status: <strong>{PAYMENT_STATUS_LABELS[order.paymentStatus] || order.paymentStatus}</strong>
-            </p>
-          </section>
-
-          {(order.statusHistory?.length > 0) && (
-            <section style={{ marginBottom: '1.5rem' }}>
-              <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Activity Log
-              </h3>
-              <div style={{ background: '#f8fafc', borderRadius: '10px', padding: '0.75rem 1rem', maxHeight: '160px', overflowY: 'auto' }}>
-                {[...(order.statusHistory || [])].reverse().map((entry, i) => (
-                  <div
-                    key={`${entry.changedAt}-${i}`}
-                    style={{
-                      fontSize: '0.85rem',
-                      color: '#475569',
-                      padding: '0.35rem 0',
-                      borderBottom: i < order.statusHistory.length - 1 ? '1px solid #e2e8f0' : 'none',
-                    }}
-                  >
-                    <strong>{entry.changedBy}</strong>
-                    {' '}
-                    {entry.from
-                      ? `changed status from ${STATUS_LABELS[entry.from]} to ${STATUS_LABELS[entry.to]}`
-                      : `set status to ${STATUS_LABELS[entry.to]}`}
-                    {entry.note && <span style={{ color: '#94a3b8' }}> — {entry.note}</span>}
-                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                      {formatStatusDate(entry.changedAt)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-        </div>
-
-        <div style={{ padding: '1rem 1.75rem', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end' }}>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: '0.65rem 1.5rem',
-              background: '#0f172a',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontWeight: '600',
-            }}
-          >
+    <div className="adm-drawer-backdrop" onClick={onClose}>
+      <aside className="adm-drawer" onClick={(e) => e.stopPropagation()}>
+        <div className="adm-drawer__head">
+          <strong>Order #{String(order.orderId).slice(0, 12)}</strong>
+          <button type="button" className="adm-btn adm-btn--ghost" onClick={onClose}>
             Close
           </button>
         </div>
-      </div>
+        <div className="adm-drawer__body">
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+            <StatusBadge status={order.status} />
+            <select
+              value={status}
+              disabled={status === 'delivered' || status === 'cancelled' || updating}
+              onChange={(e) => onStatusChange(order, e.target.value)}
+              style={{ padding: '0.45rem 0.6rem', borderRadius: 8, border: '1px solid #cbd5e1', fontWeight: 600 }}
+            >
+              {getAllowedNextStatuses(order.status).map((s) => (
+                <option key={s} value={s}>
+                  {STATUS_LABELS[s]}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {status !== 'cancelled' && (
+            <div style={{ display: 'grid', gap: 10, marginBottom: 18 }}>
+              {STATUS_STAGES.map((stage, idx) => {
+                const done = stageIndex >= idx;
+                const at =
+                  order.statusTimestamps?.[`${stage.id}At`] ||
+                  (stage.id === 'ordered' ? order.statusTimestamps?.confirmedAt : null) ||
+                  (stage.id === 'accepted' ? order.statusTimestamps?.paidAt : null);
+                return (
+                  <div key={stage.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <span
+                      style={{
+                        width: 10,
+                        height: 10,
+                        marginTop: 5,
+                        borderRadius: '50%',
+                        background: done ? '#16a34a' : '#cbd5e1',
+                      }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: 700, color: done ? '#0f172a' : '#94a3b8' }}>{stage.label}</div>
+                      <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{stage.description}</div>
+                      {at && done && (
+                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{formatStatusDate(at)}</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {order.courier?.trackingId && (
+            <section style={{ marginBottom: 16, padding: 12, borderRadius: 12, background: '#eef2ff' }}>
+              <div style={{ fontWeight: 800, color: '#3730a3', marginBottom: 6 }}>Courier tracking</div>
+              <div><strong>{order.courier.name}</strong></div>
+              <div>AWB: {order.courier.trackingId}</div>
+              {order.courier.trackingUrl && (
+                <a href={order.courier.trackingUrl} target="_blank" rel="noreferrer">
+                  Open tracking link
+                </a>
+              )}
+              {order.courier.notes && <div style={{ marginTop: 6 }}>{order.courier.notes}</div>}
+            </section>
+          )}
+
+          <section style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
+              Customer
+            </div>
+            <div style={{ fontWeight: 700 }}>{order.customer.name}</div>
+            <div style={{ color: '#64748b' }}>{order.customer.email}</div>
+            <div style={{ color: '#64748b' }}>{order.customer.phone}</div>
+          </section>
+
+          <section style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
+              Shipping address
+            </div>
+            <div style={{ lineHeight: 1.55 }}>
+              {order.shipping.addressLine1}
+              {order.shipping.addressLine2 ? <><br />{order.shipping.addressLine2}</> : null}
+              <br />
+              {order.shipping.city}, {order.shipping.state} — {order.shipping.pincode}
+            </div>
+          </section>
+
+          <section style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
+              Items
+            </div>
+            {(order.items || []).map((item) => (
+              <div key={`${item.id}-${item.sizeId}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}>
+                <span>
+                  {item.qty}× {item.name} ({item.sizeLabel}
+                  {item.weightLabel ? ` · ${item.weightLabel}` : ''})
+                </span>
+                <strong>{money(item.lineTotal)}</strong>
+              </div>
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontWeight: 800 }}>
+              <span>Total</span>
+              <span>{money(order.total)}</span>
+            </div>
+          </section>
+        </div>
+      </aside>
     </div>
   );
-}
-
-function getEffectiveStageIndex(order) {
-  if (order.status === 'cancelled') return -1;
-  if (
-    order.paymentMethod === 'cod' &&
-    order.status === 'confirmed' &&
-    order.paymentStatus === 'pending_cod'
-  ) {
-    return 1;
-  }
-  return getStageIndex(order.status);
 }

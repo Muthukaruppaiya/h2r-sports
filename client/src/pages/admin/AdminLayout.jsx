@@ -52,6 +52,13 @@ const ICONS = {
       <path d="M12 18v3" />
     </svg>
   ),
+  billing: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M3 10h18" />
+      <path d="M7 15h4" />
+    </svg>
+  ),
   chevron: (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <polyline points="9 6 15 12 9 18" />
@@ -67,9 +74,9 @@ const NAV = [
     label: 'Items',
     icon: 'items',
     children: [
-      { label: 'Inventory', to: '/admin/inventory' },
-      { label: 'Categories', to: '/admin/inventory' },
-      { label: 'Collections', to: '/admin/inventory' },
+      { label: 'Inventory', to: '/admin/inventory', tab: 'products' },
+      { label: 'Categories', to: '/admin/inventory?tab=categories', tab: 'categories' },
+      { label: 'Collections', to: '/admin/inventory?tab=collections', tab: 'collections' },
     ],
   },
   {
@@ -78,7 +85,9 @@ const NAV = [
     label: 'Sales',
     icon: 'sales',
     children: [
-      { label: 'Orders', to: '/admin/orders' },
+      { label: 'Online Orders', to: '/admin/orders' },
+      { label: 'Store Billing', to: '/admin/store-billing' },
+      { label: 'Online Billing', to: '/admin/billing' },
       { label: 'Customers', to: '/admin/customers' },
     ],
   },
@@ -87,9 +96,7 @@ const NAV = [
     id: 'store',
     label: 'Online Store',
     icon: 'store',
-    children: [
-      { label: 'Visit Store', to: '/', external: true },
-    ],
+    children: [{ label: 'Visit Store', to: '/', external: true }],
   },
   {
     type: 'group',
@@ -97,31 +104,78 @@ const NAV = [
     label: 'Marketing',
     icon: 'marketing',
     children: [
-      { label: 'Floating Video', to: '/admin/marketing' },
-      { label: 'WhatsApp Status', to: '/admin/marketing' },
+      { label: 'Floating Video', to: '/admin/marketing?tab=video', tab: 'video' },
+      { label: 'WhatsApp Status', to: '/admin/marketing?tab=status', tab: 'status' },
     ],
   },
   { type: 'link', id: 'reports', label: 'Reports', to: '/admin/reports', icon: 'reports' },
   { type: 'link', id: 'integrations', label: 'Integrations', to: '/admin/integrations', icon: 'plug' },
 ];
 
+const PAGE_META = [
+  { match: '/admin/store-billing', title: 'Store Billing', subtitle: 'Physical shop / walk-in sales' },
+  { match: '/admin/billing', title: 'Online Billing', subtitle: 'Website order payments' },
+  { match: '/admin/orders', title: 'Online Orders', subtitle: 'Fulfillment pipeline' },
+  { match: '/admin/inventory', title: 'Items', subtitle: 'Catalogue, categories & collections' },
+  { match: '/admin/customers', title: 'Customers', subtitle: 'Buyer directory' },
+  { match: '/admin/marketing', title: 'Marketing', subtitle: 'Status rings & floating videos' },
+  { match: '/admin/reports', title: 'Reports', subtitle: 'Sales intelligence' },
+  { match: '/admin/integrations', title: 'Integrations', subtitle: 'Connected tools' },
+  { match: '/admin', title: 'Dashboard', subtitle: 'Store overview', exact: true },
+];
+
 function pathMatches(pathname, to, end) {
-  if (end) return pathname === to;
-  return pathname === to || pathname.startsWith(`${to}/`);
+  const base = String(to).split('?')[0];
+  if (end) return pathname === base;
+  return pathname === base || pathname.startsWith(`${base}/`);
+}
+
+function childIsActive(pathname, searchParams, child) {
+  if (child.external) return false;
+  const base = String(child.to).split('?')[0];
+  if (pathname !== base && !pathname.startsWith(`${base}/`)) return false;
+
+  if (child.tab) {
+    const currentTab = searchParams.get('tab');
+    if (child.tab === 'products') {
+      return !currentTab || currentTab === 'products';
+    }
+    if (child.tab === 'video') {
+      return currentTab === 'video' || currentTab === 'videos';
+    }
+    if (child.tab === 'status') {
+      return !currentTab || currentTab === 'status' || currentTab === 'statuses';
+    }
+    return currentTab === child.tab;
+  }
+
+  // Exact path match without shared siblings stealing active state
+  return pathname === base || pathname.startsWith(`${base}/`);
+}
+
+function resolvePageMeta(pathname) {
+  return (
+    PAGE_META.find((p) => (p.exact ? pathname === p.match : pathMatches(pathname, p.match, false))) ||
+    PAGE_META[PAGE_META.length - 1]
+  );
 }
 
 export default function AdminLayout() {
   const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const location = useLocation();
+  const { pathname, search } = location;
+  const searchParams = useMemo(() => new URLSearchParams(search), [search]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const page = resolvePageMeta(pathname);
+  const user = JSON.parse(localStorage.getItem('h2r_user') || '{}');
 
   const initiallyOpen = useMemo(() => {
     const open = {};
     NAV.filter((n) => n.type === 'group').forEach((g) => {
-      open[g.id] = g.children.some((c) => !c.external && pathMatches(pathname, c.to, false));
+      open[g.id] = g.children.some((c) => childIsActive(pathname, searchParams, c));
     });
     return open;
-  }, [pathname]);
+  }, [pathname, searchParams]);
 
   const [openGroups, setOpenGroups] = useState(initiallyOpen);
 
@@ -131,7 +185,7 @@ export default function AdminLayout() {
 
   useEffect(() => {
     setSidebarOpen(false);
-  }, [pathname]);
+  }, [pathname, search]);
 
   useEffect(() => {
     document.body.style.overflow = sidebarOpen ? 'hidden' : '';
@@ -142,6 +196,12 @@ export default function AdminLayout() {
 
   const toggleGroup = (id) => {
     setOpenGroups((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const logout = () => {
+    localStorage.removeItem('h2r_token');
+    localStorage.removeItem('h2r_user');
+    navigate('/login?redirect=admin');
   };
 
   return (
@@ -158,7 +218,7 @@ export default function AdminLayout() {
         </button>
         <div className="zoho-admin__mobile-title">
           <strong>H2R Admin</strong>
-          <span>Commerce panel</span>
+          <span>{page.title}</span>
         </div>
       </header>
 
@@ -183,7 +243,7 @@ export default function AdminLayout() {
             />
             <div>
               <strong>H2R Admin</strong>
-              <span>Commerce</span>
+              <span>Commerce control</span>
             </div>
           </div>
           <button
@@ -214,9 +274,9 @@ export default function AdminLayout() {
             }
 
             const open = !!openGroups[item.id];
-            const childActive = item.children.some((c) => !c.external && pathMatches(pathname, c.to, false));
+            const childActive = item.children.some((c) => childIsActive(pathname, searchParams, c));
             return (
-              <div key={item.id} className="zoho-admin__group">
+              <div key={item.id} className={`zoho-admin__group${open ? ' is-open' : ''}`}>
                 <button
                   type="button"
                   className={`zoho-admin__group-btn${childActive ? ' is-active-parent' : ''}`}
@@ -242,10 +302,13 @@ export default function AdminLayout() {
                         <NavLink
                           key={child.label + child.to}
                           to={child.to}
-                          className={({ isActive }) =>
-                            `zoho-admin__sublink${isActive ? ' is-active' : ''}`
+                          className={() =>
+                            `zoho-admin__sublink${
+                              childIsActive(pathname, searchParams, child) ? ' is-active' : ''
+                            }`
                           }
                         >
+                          <span className="zoho-admin__sub-dot" aria-hidden="true" />
                           {child.label}
                         </NavLink>
                       )
@@ -256,21 +319,53 @@ export default function AdminLayout() {
             );
           })}
 
-          <div className="zoho-admin__section-label">APPS</div>
-          <div className="zoho-admin__app-row">
+          <div className="zoho-admin__section-label">QUICK APPS</div>
+          <NavLink
+            to="/admin/store-billing"
+            className={({ isActive }) => `zoho-admin__app-row${isActive ? ' is-active' : ''}`}
+            style={{ textDecoration: 'none' }}
+          >
             <span className="zoho-admin__app-dot">₹</span>
-            <span>H2R Payments</span>
-          </div>
+            <span>Store Billing</span>
+          </NavLink>
+          <NavLink
+            to="/admin/billing"
+            className={({ isActive }) => `zoho-admin__app-row${isActive ? ' is-active' : ''}`}
+            style={{ textDecoration: 'none' }}
+          >
+            <span
+              className="zoho-admin__app-dot"
+              style={{ background: 'linear-gradient(135deg,#1d4ed8,#3b82f6)' }}
+            >
+              O
+            </span>
+            <span>Online Billing</span>
+          </NavLink>
         </nav>
 
         <button type="button" className="zoho-admin__store-btn" onClick={() => navigate('/')}>
           <span className="zoho-admin__store-ico">{ICONS.store}</span>
-          <span>Store Actions</span>
+          <span>Open storefront</span>
           <span className="zoho-admin__chev is-open">{ICONS.chevron}</span>
         </button>
       </aside>
 
       <main className="zoho-admin__main">
+        <div className="zoho-admin__topbar">
+          <div className="zoho-admin__topbar-title">
+            <strong>{page.title}</strong>
+            <span>{page.subtitle}</span>
+          </div>
+          <div className="zoho-admin__topbar-actions">
+            <span className="zoho-admin__user-chip">{user.name || user.email || 'Admin'}</span>
+            <button type="button" className="adm-btn adm-btn--ghost" onClick={() => navigate('/')}>
+              Store
+            </button>
+            <button type="button" className="adm-btn adm-btn--ghost" onClick={logout}>
+              Log out
+            </button>
+          </div>
+        </div>
         <Outlet />
       </main>
     </div>

@@ -9,6 +9,16 @@ const SizeSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const WeightSchema = new mongoose.Schema(
+  {
+    id:    { type: String, required: true },
+    from:  { type: String, required: true },
+    to:    { type: String, required: true },
+    label: { type: String, required: true },
+  },
+  { _id: false }
+);
+
 const ProductSchema = new mongoose.Schema(
   {
     id:          { type: String, required: true, unique: true },
@@ -16,7 +26,7 @@ const ProductSchema = new mongoose.Schema(
     tagline:     { type: String, default: '' },
     price:       { type: Number, required: true },
     compareAt:   { type: Number, default: null },
-    collection:  { type: String, required: true },   // collection id
+    collection:  { type: String, required: true },
     category:    { type: String, required: true },
     badge:       { type: String, default: '' },
     weight:      { type: String, default: '' },
@@ -26,6 +36,7 @@ const ProductSchema = new mongoose.Schema(
     mostLoved:   { type: Boolean, default: false },
     inStock:     { type: Boolean, default: true },
     sizes:       { type: [SizeSchema], default: [] },
+    weights:     { type: [WeightSchema], default: [] },
     features:    { type: [String], default: [] },
     images:      { type: [String], default: [] },
     description: { type: String, default: '' },

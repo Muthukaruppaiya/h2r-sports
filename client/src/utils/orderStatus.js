@@ -1,16 +1,32 @@
-export const ORDER_STATUSES = ['confirmed', 'paid', 'shipped', 'delivered', 'cancelled'];
+export const ORDER_STATUSES = [
+  'ordered',
+  'accepted',
+  'packed',
+  'shipped',
+  'delivered',
+  'cancelled',
+];
+
+const LEGACY_STATUS_MAP = {
+  confirmed: 'ordered',
+  paid: 'accepted',
+};
 
 export const STATUS_LABELS = {
-  confirmed: 'Confirmed',
-  paid: 'Paid',
+  ordered: 'Ordered',
+  accepted: 'Accepted',
+  packed: 'Packed',
   shipped: 'Shipped',
   delivered: 'Delivered',
   cancelled: 'Cancelled',
+  confirmed: 'Ordered',
+  paid: 'Accepted',
 };
 
 export const STATUS_STYLES = {
-  confirmed: { bg: '#fef9c3', color: '#854d0e', border: '#fef08a' },
-  paid: { bg: '#dbeafe', color: '#1e40af', border: '#bfdbfe' },
+  ordered: { bg: '#fef9c3', color: '#854d0e', border: '#fef08a' },
+  accepted: { bg: '#dbeafe', color: '#1e40af', border: '#bfdbfe' },
+  packed: { bg: '#ffedd5', color: '#9a3412', border: '#fed7aa' },
   shipped: { bg: '#e0e7ff', color: '#3730a3', border: '#c7d2fe' },
   delivered: { bg: '#dcfce7', color: '#166534', border: '#bbf7d0' },
   cancelled: { bg: '#fee2e2', color: '#991b1b', border: '#fecaca' },
@@ -23,36 +39,45 @@ export const PAYMENT_STATUS_LABELS = {
 };
 
 export const ALLOWED_TRANSITIONS = {
-  confirmed: ['paid', 'shipped', 'cancelled'],
-  paid: ['shipped', 'cancelled'],
+  ordered: ['accepted', 'cancelled'],
+  accepted: ['packed', 'cancelled'],
+  packed: ['shipped', 'cancelled'],
   shipped: ['delivered', 'cancelled'],
   delivered: [],
   cancelled: [],
 };
 
 export const STATUS_STAGES = [
-  { id: 'confirmed', label: 'Order Placed', description: 'We have received your order.' },
-  { id: 'paid', label: 'Payment Confirmed', description: 'Payment has been successfully processed.' },
-  { id: 'shipped', label: 'Shipped', description: 'Your order is on the way.' },
+  { id: 'ordered', label: 'Ordered', description: 'We have received your order.' },
+  { id: 'accepted', label: 'Accepted', description: 'Your order has been accepted by the shop.' },
+  { id: 'packed', label: 'Packed', description: 'Your order is packed and ready for courier.' },
+  { id: 'shipped', label: 'Shipped', description: 'Your order is out for delivery.' },
   { id: 'delivered', label: 'Delivered', description: 'Your order has been delivered.' },
 ];
 
+export function normalizeStatus(status) {
+  if (!status) return 'ordered';
+  return LEGACY_STATUS_MAP[status] || status;
+}
+
 export function getStatusLabel(status) {
-  return STATUS_LABELS[status] || status;
+  return STATUS_LABELS[normalizeStatus(status)] || status;
 }
 
 export function getStatusStyle(status) {
-  return STATUS_STYLES[status] || STATUS_STYLES.confirmed;
+  return STATUS_STYLES[normalizeStatus(status)] || STATUS_STYLES.ordered;
 }
 
 export function getAllowedNextStatuses(currentStatus) {
-  if (!ORDER_STATUSES.includes(currentStatus)) return ORDER_STATUSES;
-  return [currentStatus, ...(ALLOWED_TRANSITIONS[currentStatus] || [])];
+  const from = normalizeStatus(currentStatus);
+  if (!ORDER_STATUSES.includes(from)) return ORDER_STATUSES;
+  return [from, ...(ALLOWED_TRANSITIONS[from] || [])];
 }
 
 export function getStageIndex(status) {
-  if (status === 'cancelled') return -1;
-  return STATUS_STAGES.findIndex((s) => s.id === status);
+  const normalized = normalizeStatus(status);
+  if (normalized === 'cancelled') return -1;
+  return STATUS_STAGES.findIndex((s) => s.id === normalized);
 }
 
 export function formatStatusDate(date) {

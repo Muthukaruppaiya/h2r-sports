@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import { mediaUrl } from '../../config/api.js';
 import { isInstagramUrl } from '../../utils/instagram';
@@ -32,25 +33,90 @@ const emptyStatus = () => ({
 });
 
 const DURATION_OPTIONS = [
-  { value: 1, label: '1 day (default)' },
+  { value: 1, label: '1 day' },
   { value: 2, label: '2 days' },
   { value: 3, label: '3 days' },
   { value: 5, label: '5 days' },
-  { value: 7, label: '7 days (max)' },
+  { value: 7, label: '7 days' },
 ];
 
+function inferMediaType(url, mediaType) {
+  if (mediaType === 'video' || mediaType === 'image') return mediaType;
+  const path = String(url || '').split('?')[0].toLowerCase();
+  if (/\.(mp4|webm|mov|m4v)$/.test(path)) return 'video';
+  return 'image';
+}
+
+function isStatusExpired(status) {
+  if (status?.isExpired === true) return true;
+  if (status?.isExpired === false) {
+    if (status.expiresAt && new Date(status.expiresAt) <= new Date()) return true;
+    return false;
+  }
+  if (status?.expiresAt) return new Date(status.expiresAt) <= new Date();
+  return false;
+}
+
 function formatExpiry(status) {
-  if (!status?.expiresAt) return 'Not published yet';
+  if (!status?.expiresAt) return 'Not published';
   const end = new Date(status.expiresAt);
   const now = new Date();
   if (end <= now) return 'Expired';
   const hours = Math.max(1, Math.round((end - now) / 36e5));
-  if (hours < 24) return `Expires in ~${hours}h`;
+  if (hours < 24) return `~${hours}h left`;
   const days = Math.ceil(hours / 24);
-  return `Expires in ~${days} day${days > 1 ? 's' : ''}`;
+  return `~${days}d left`;
+}
+
+function normalizeStatuses(list = []) {
+  const now = new Date();
+  return list.map((s) => ({
+    ...s,
+    isExpired: !(s.active !== false && s.mediaUrl && s.expiresAt && new Date(s.expiresAt) > now),
+    resetTimer: false,
+  }));
+}
+
+function StatusMedia({ url, mediaType, className = '', autoPlay = false, loop = false }) {
+  const [broken, setBroken] = useState(false);
+  const src = mediaUrl(url);
+  const type = inferMediaType(url, mediaType);
+
+  useEffect(() => {
+    setBroken(false);
+  }, [url]);
+
+  if (!url || broken) {
+    return <div className={`mkt-media-broken ${className}`.trim()}>Re-upload</div>;
+  }
+
+  if (type === 'video') {
+    return (
+      <video
+        className={className}
+        src={src}
+        muted
+        playsInline
+        autoPlay={autoPlay}
+        loop={loop}
+        preload="metadata"
+        onError={() => setBroken(true)}
+      />
+    );
+  }
+
+  return <img className={className} src={src} alt="" onError={() => setBroken(true)} />;
 }
 
 export default function Marketing() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const tab = tabParam === 'video' || tabParam === 'videos' ? 'videos' : 'statuses';
+
+  const setTab = (next) => {
+    setSearchParams(next === 'videos' ? { tab: 'video' } : { tab: 'status' }, { replace: true });
+  };
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [floatingVideos, setFloatingVideos] = useState([]);
@@ -59,7 +125,6 @@ export default function Marketing() {
   const [notice, setNotice] = useState({ type: '', text: '' });
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [uploadingStatus, setUploadingStatus] = useState(false);
-  const [tab, setTab] = useState('statuses');
 
   const [videoModal, setVideoModal] = useState(null);
   const [statusModal, setStatusModal] = useState(null);
@@ -73,7 +138,7 @@ export default function Marketing() {
         ]);
         const settings = marketingRes.data.settings || {};
         setFloatingVideos(settings.floatingVideos || []);
-        setWhatsappStatuses(settings.whatsappStatuses || []);
+        setWhatsappStatuses(normalizeStatuses(settings.whatsappStatuses || []));
         setProducts(productsRes.data.products || []);
       } catch (_err) {
         flash('error', 'Failed to load marketing settings.');
@@ -88,12 +153,15 @@ export default function Marketing() {
     setNotice({ type, text });
     if (text) {
       window.clearTimeout(flash._t);
-      flash._t = window.setTimeout(() => setNotice({ type: '', text: '' }), 5000);
+      flash._t = window.setTimeout(() => setNotice({ type: '', text: '' }), 4000);
     }
   };
 
   const liveStatuses = useMemo(
-    () => whatsappStatuses.filter((s) => s.active !== false && s.mediaUrl && !s.isExpired),
+    () =>
+      whatsappStatuses.filter(
+        (s) => s.active !== false && s.mediaUrl && !isStatusExpired(s)
+      ),
     [whatsappStatuses]
   );
 
@@ -151,7 +219,7 @@ export default function Marketing() {
     if (!file || !videoModal) return;
     const maxBytes = 50 * 1024 * 1024;
     if (file.size > maxBytes) {
-      flash('error', 'Video is too large (max 50MB). Compress it or use a shorter clip.');
+      flash('error', 'Video too large (max 50MB).');
       return;
     }
     setUploadingVideo(true);
@@ -174,7 +242,7 @@ export default function Marketing() {
     if (!file || !statusModal) return;
     const maxBytes = 50 * 1024 * 1024;
     if (file.size > maxBytes) {
-      flash('error', 'File is too large (max 50MB). Use a smaller photo/video.');
+      flash('error', 'File too large (max 50MB).');
       return;
     }
     setUploadingStatus(true);
@@ -195,7 +263,7 @@ export default function Marketing() {
             }
           : prev
       );
-      flash('success', `${res.data.mediaType === 'video' ? 'Video' : 'Photo'} uploaded.`);
+      flash('success', 'Media uploaded.');
     } catch (err) {
       flash('error', err.response?.data?.error || err.message || 'Upload failed.');
     } finally {
@@ -211,7 +279,7 @@ export default function Marketing() {
       return;
     }
     if (!draft.videoUrl) {
-      flash('error', 'Upload a video file (needed for autoplay).');
+      flash('error', 'Upload a video file.');
       return;
     }
     if (draft.instagramUrl && !isInstagramUrl(draft.instagramUrl)) {
@@ -219,7 +287,7 @@ export default function Marketing() {
       return;
     }
     if (!draft.productPath?.startsWith('/shop/')) {
-      flash('error', 'Select a product for Buy Now.');
+      flash('error', 'Select a product.');
       return;
     }
 
@@ -229,18 +297,18 @@ export default function Marketing() {
       return [...prev, draft];
     });
     setVideoModal(null);
-    flash('success', 'Video saved in draft. Click Publish to go live.');
+    flash('success', 'Saved — click Publish to go live.');
   };
 
   const saveStatusModal = () => {
     const draft = statusModal?.draft;
     if (!draft) return;
     if (!draft.title.trim()) {
-      flash('error', 'Enter a short status name (shown under the circle).');
+      flash('error', 'Enter a status name.');
       return;
     }
     if (!draft.mediaUrl) {
-      flash('error', 'Upload a photo or video for the status ring.');
+      flash('error', 'Upload a photo or video.');
       return;
     }
 
@@ -257,16 +325,16 @@ export default function Marketing() {
       return [...prev, nextDraft];
     });
     setStatusModal(null);
-    flash('success', 'Status saved in draft. Click Publish to go live on the store.');
+    flash('success', 'Saved — click Publish to go live.');
   };
 
   const removeVideo = (id) => {
-    if (!window.confirm('Remove this floating video?')) return;
+    if (!window.confirm('Remove this video?')) return;
     setFloatingVideos((prev) => prev.filter((v) => v.id !== id));
   };
 
   const removeStatus = (id) => {
-    if (!window.confirm('Remove this WhatsApp status?')) return;
+    if (!window.confirm('Remove this status?')) return;
     setWhatsappStatuses((prev) => prev.filter((s) => s.id !== id));
   };
 
@@ -285,12 +353,10 @@ export default function Marketing() {
   const republishStatus = (id) => {
     setWhatsappStatuses((prev) =>
       prev.map((s) =>
-        s.id === id
-          ? { ...s, resetTimer: true, active: true, isExpired: false }
-          : s
+        s.id === id ? { ...s, resetTimer: true, active: true, isExpired: false } : s
       )
     );
-    flash('success', 'Timer will restart on Publish (fresh duration from now).');
+    flash('success', 'Timer will restart on Publish.');
   };
 
   const publish = async () => {
@@ -303,46 +369,47 @@ export default function Marketing() {
       });
       const settings = res.data.settings || {};
       setFloatingVideos(settings.floatingVideos || []);
-      const now = new Date();
-      setWhatsappStatuses(
-        (settings.whatsappStatuses || []).map((s) => ({
-          ...s,
-          isExpired: !(s.active !== false && s.mediaUrl && s.expiresAt && new Date(s.expiresAt) > now),
-          resetTimer: false,
-        }))
-      );
-      flash('success', 'Published! Open the storefront to see live statuses and videos.');
+      setWhatsappStatuses(normalizeStatuses(settings.whatsappStatuses || []));
+      flash('success', 'Published.');
     } catch (err) {
-      flash('error', err.response?.data?.error || 'Failed to publish settings.');
+      flash('error', err.response?.data?.error || 'Failed to publish.');
     } finally {
       setSaving(false);
     }
   };
 
   if (loading) {
-    return <div className="mkt-page__loading">Loading marketing module…</div>;
+    return (
+      <div className="mkt-studio adm-page">
+        <div className="mkt-skeleton mkt-skeleton--hero" />
+        <div className="mkt-skeleton-grid">
+          <div className="mkt-skeleton" />
+          <div className="mkt-skeleton" />
+          <div className="mkt-skeleton" />
+          <div className="mkt-skeleton" />
+        </div>
+        <div className="mkt-skeleton mkt-skeleton--board" />
+      </div>
+    );
   }
 
   const sortedVideos = [...floatingVideos].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
   const sortedStatuses = [...whatsappStatuses].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+  const activeVideos = floatingVideos.filter((v) => v.active !== false).length;
 
   return (
-    <div className="mkt-page">
-      <header className="mkt-page__header">
-        <div>
-          <p className="mkt-page__eyebrow">Client testing ready</p>
-          <h1>Marketing Studio</h1>
-          <p className="mkt-page__sub">
-            Manage WhatsApp-style status rings (photo/video + expiry) and floating shoppable videos.
-            Changes go live only after you click Publish.
-          </p>
+    <div className="mkt-studio adm-page">
+      <header className="mkt-studio__hero mkt-anim">
+        <div className="mkt-studio__hero-copy">
+          <h1>Marketing</h1>
+          <p>Status rings & shoppable videos</p>
         </div>
-        <div className="mkt-page__header-actions">
-          <a className="mkt-btn mkt-btn--ghost" href="/" target="_blank" rel="noreferrer">
-            Preview store
+        <div className="mkt-studio__hero-actions mkt-studio__hero-actions--desktop">
+          <a className="adm-btn adm-btn--ghost" href="/" target="_blank" rel="noreferrer">
+            Open store
           </a>
-          <button type="button" className="mkt-btn mkt-btn--primary" onClick={publish} disabled={saving}>
-            {saving ? 'Publishing…' : 'Publish Changes'}
+          <button type="button" className="adm-btn adm-btn--primary mkt-publish" onClick={publish} disabled={saving}>
+            {saving ? 'Publishing…' : 'Publish live'}
           </button>
         </div>
       </header>
@@ -353,156 +420,132 @@ export default function Marketing() {
         </div>
       )}
 
-      <div className="mkt-guide">
-        <div>
-          <strong>How status works</strong>
-          <p>Upload a photo or video → it shows as a round ring on top of the store → expires after the days you set (default 1).</p>
-        </div>
-        <div>
-          <strong>How floating video works</strong>
-          <p>Upload an mp4, link a product, publish. Shoppers tap the bubble for full video + Buy Now.</p>
-        </div>
-        <div>
-          <strong>Testing tip</strong>
-          <p>Use 1-day expiry for real campaigns. For demos, set 2–7 days so the client can review longer.</p>
-        </div>
+      <div className="adm-kpi-grid mkt-studio__kpis">
+        {[
+          { label: 'Live', value: liveStatuses.length, color: '#059669', glow: 'rgba(5,150,105,0.14)' },
+          { label: 'Statuses', value: whatsappStatuses.length, color: '#0f172a', glow: 'rgba(15,23,42,0.08)' },
+          { label: 'Videos', value: activeVideos, color: '#2563eb', glow: 'rgba(37,99,235,0.14)' },
+          { label: 'Products', value: products.length, color: '#b45309', glow: 'rgba(180,83,9,0.12)' },
+        ].map((kpi, i) => (
+          <div
+            key={kpi.label}
+            className="adm-kpi mkt-anim"
+            style={{
+              '--kpi-color': kpi.color,
+              '--kpi-glow': kpi.glow,
+              animationDelay: `${0.04 + i * 0.05}s`,
+            }}
+          >
+            <div className="adm-kpi__label">{kpi.label}</div>
+            <div className="adm-kpi__value">{kpi.value}</div>
+          </div>
+        ))}
       </div>
 
-      <div className="mkt-stats">
-        <div className="mkt-stat">
-          <span>Live statuses</span>
-          <strong>{liveStatuses.length}</strong>
-        </div>
-        <div className="mkt-stat">
-          <span>All statuses</span>
-          <strong>{whatsappStatuses.length}</strong>
-        </div>
-        <div className="mkt-stat">
-          <span>Floating videos</span>
-          <strong>{floatingVideos.filter((v) => v.active !== false).length}</strong>
-        </div>
-        <div className="mkt-stat">
-          <span>Products</span>
-          <strong>{products.length}</strong>
-        </div>
-      </div>
-
-      <div className="mkt-tabs">
+      <div className="mkt-seg mkt-anim" style={{ animationDelay: '0.12s' }} role="tablist">
         <button
           type="button"
-          className={`mkt-tabs__btn${tab === 'statuses' ? ' is-active' : ''}`}
+          role="tab"
+          aria-selected={tab === 'statuses'}
+          className={`mkt-seg__btn${tab === 'statuses' ? ' is-active' : ''}`}
           onClick={() => setTab('statuses')}
         >
-          WhatsApp Status Rings
+          Status rings
+          <em>{whatsappStatuses.length}</em>
         </button>
         <button
           type="button"
-          className={`mkt-tabs__btn${tab === 'videos' ? ' is-active' : ''}`}
+          role="tab"
+          aria-selected={tab === 'videos'}
+          className={`mkt-seg__btn${tab === 'videos' ? ' is-active' : ''}`}
           onClick={() => setTab('videos')}
         >
-          Floating Videos
+          Floating videos
+          <em>{floatingVideos.length}</em>
         </button>
       </div>
 
       {tab === 'statuses' && (
-        <section className="mkt-panel">
-          <div className="mkt-panel__head">
+        <section className="mkt-board mkt-board--enter" key="statuses">
+          <div className="mkt-board__bar">
             <div>
-              <h2>WhatsApp Status Rings</h2>
-              <p>Round photo/video stories at the top of the storefront — like WhatsApp status.</p>
+              <h2>Status rings</h2>
+              <span>{liveStatuses.length} live on store</span>
             </div>
-            <button type="button" className="mkt-btn mkt-btn--ghost" onClick={openNewStatus}>
-              + Add Status
+            <button type="button" className="adm-btn adm-btn--primary" onClick={openNewStatus}>
+              + New status
             </button>
           </div>
 
-          {liveStatuses.length > 0 && (
-            <div className="mkt-preview-row" aria-label="Storefront preview">
-              <p className="mkt-preview-row__label">Live preview (storefront rings)</p>
-              <div className="mkt-preview-row__rings">
+          <div className="mkt-stage">
+            <div className="mkt-stage__label">Storefront preview</div>
+            {liveStatuses.length === 0 ? (
+              <div className="mkt-stage__empty">No live rings yet</div>
+            ) : (
+              <div className="mkt-stage__rings">
                 {liveStatuses.map((s) => (
-                  <div key={s.id} className="mkt-preview-ring">
-                    <span className="mkt-preview-ring__halo">
-                      <span className="mkt-preview-ring__media">
-                        {s.mediaType === 'video' ? (
-                          <video src={mediaUrl(s.mediaUrl)} muted playsInline />
-                        ) : (
-                          <img src={mediaUrl(s.mediaUrl)} alt="" />
-                        )}
+                  <button
+                    key={s.id}
+                    type="button"
+                    className="mkt-ring"
+                    onClick={() => openEditStatus(s)}
+                  >
+                    <span className="mkt-ring__halo">
+                      <span className="mkt-ring__media">
+                        <StatusMedia url={s.mediaUrl} mediaType={s.mediaType} />
                       </span>
                     </span>
-                    <span>{s.title || 'Update'}</span>
-                  </div>
+                    <span className="mkt-ring__name">{s.title || 'Update'}</span>
+                  </button>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {sortedStatuses.length === 0 ? (
-            <EmptyState
-              title="No status rings yet"
-              text="Add a photo or video status. It appears as a circle on top of the website."
-              actionLabel="Add first status"
-              onAction={openNewStatus}
-            />
+            <EmptyState title="Create your first status ring" actionLabel="Add status" onAction={openNewStatus} />
           ) : (
-            <div className="mkt-status-cards">
-              {sortedStatuses.map((status) => {
-                const expired = status.isExpired || (status.expiresAt && new Date(status.expiresAt) <= new Date());
+            <div className="mkt-gallery">
+              {sortedStatuses.map((status, index) => {
+                const expired = isStatusExpired(status);
+                const type = inferMediaType(status.mediaUrl, status.mediaType);
+                const state = expired ? 'expired' : status.active === false ? 'off' : 'live';
                 return (
                   <article
                     key={status.id}
-                    className={`mkt-status-card${status.active === false || expired ? ' is-off' : ''}`}
+                    className={`mkt-tile mkt-tile--status is-${state} mkt-anim`}
+                    style={{ animationDelay: `${Math.min(index, 8) * 0.04}s` }}
                   >
-                    <div className="mkt-status-card__thumb">
-                      {status.mediaUrl ? (
-                        status.mediaType === 'video' ? (
-                          <video src={mediaUrl(status.mediaUrl)} muted playsInline />
-                        ) : (
-                          <img src={mediaUrl(status.mediaUrl)} alt="" />
-                        )
-                      ) : (
-                        <div className="mkt-status-card__empty">No media</div>
-                      )}
-                      <span className="mkt-status-card__type">
-                        {status.mediaType === 'video' ? 'Video' : 'Photo'}
+                    <button type="button" className="mkt-tile__media" onClick={() => openEditStatus(status)}>
+                      <StatusMedia url={status.mediaUrl} mediaType={status.mediaType} />
+                      <span className="mkt-tile__ring-overlay" aria-hidden>
+                        <span />
                       </span>
-                    </div>
-                    <div className="mkt-status-card__body">
-                      <div className="mkt-status-card__top">
-                        <h3>{status.title || 'Untitled'}</h3>
-                        <span
-                          className={`mkt-badge${
-                            expired ? ' mkt-badge--warn' : status.active === false ? ' mkt-badge--muted' : ''
-                          }`}
-                        >
-                          {expired ? 'Expired' : status.active === false ? 'Inactive' : 'Live'}
-                        </span>
-                      </div>
+                      <span className={`mkt-chip mkt-chip--${state}`}>
+                        {state === 'live' ? 'Live' : state === 'expired' ? 'Expired' : 'Off'}
+                      </span>
+                      <span className="mkt-chip mkt-chip--type">{type === 'video' ? 'Video' : 'Photo'}</span>
+                    </button>
+                    <div className="mkt-tile__body">
+                      <h3>{status.title || 'Untitled'}</h3>
                       <p>
-                        Shows for <strong>{status.durationDays || 1} day{(status.durationDays || 1) > 1 ? 's' : ''}</strong>
-                        {' · '}
-                        {formatExpiry(status)}
+                        {status.durationDays || 1}d · {formatExpiry(status)}
+                        {status.resetTimer ? ' · restart queued' : ''}
                       </p>
-                      {status.text && status.text !== status.title && <p className="mkt-status-card__caption">{status.text}</p>}
-                      <div className="mkt-status-card__actions">
-                        <button type="button" className="mkt-btn mkt-btn--sm" onClick={() => openEditStatus(status)}>
+                      <div className="mkt-tile__actions">
+                        <button type="button" className="adm-btn adm-btn--ghost" onClick={() => openEditStatus(status)}>
                           Edit
                         </button>
-                        <button type="button" className="mkt-btn mkt-btn--sm" onClick={() => toggleStatusActive(status.id)}>
-                          {status.active === false ? 'Activate' : 'Deactivate'}
+                        <button type="button" className="adm-btn adm-btn--ghost" onClick={() => toggleStatusActive(status.id)}>
+                          {status.active === false ? 'Activate' : 'Pause'}
                         </button>
                         {(expired || status.resetTimer) && (
-                          <button type="button" className="mkt-btn mkt-btn--sm" onClick={() => republishStatus(status.id)}>
-                            Restart timer
+                          <button type="button" className="adm-btn adm-btn--ghost" onClick={() => republishStatus(status.id)}>
+                            Restart
                           </button>
                         )}
-                        <button
-                          type="button"
-                          className="mkt-btn mkt-btn--sm mkt-btn--danger"
-                          onClick={() => removeStatus(status.id)}
-                        >
-                          Remove
+                        <button type="button" className="adm-btn adm-btn--danger" onClick={() => removeStatus(status.id)}>
+                          Delete
                         </button>
                       </div>
                     </div>
@@ -515,61 +558,52 @@ export default function Marketing() {
       )}
 
       {tab === 'videos' && (
-        <section className="mkt-panel">
-          <div className="mkt-panel__head">
+        <section className="mkt-board mkt-board--enter" key="videos">
+          <div className="mkt-board__bar">
             <div>
-              <h2>Floating Autoplay Video</h2>
-              <p>Upload mp4 → assign product → shoppers tap for full video + Buy Now.</p>
+              <h2>Floating videos</h2>
+              <span>{activeVideos} active on store</span>
             </div>
-            <button type="button" className="mkt-btn mkt-btn--ghost" onClick={openNewVideo}>
-              + Add Video
+            <button type="button" className="adm-btn adm-btn--primary" onClick={openNewVideo}>
+              + New video
             </button>
           </div>
 
           {sortedVideos.length === 0 ? (
-            <EmptyState
-              title="No floating videos yet"
-              text="Add a short vertical video and link it to a product."
-              actionLabel="Add first video"
-              onAction={openNewVideo}
-            />
+            <EmptyState title="Add a shoppable floating video" actionLabel="Add video" onAction={openNewVideo} />
           ) : (
-            <div className="mkt-video-grid">
-              {sortedVideos.map((video) => (
-                <article key={video.id} className={`mkt-video-card${video.active === false ? ' is-off' : ''}`}>
-                  <div className="mkt-video-card__media">
+            <div className="mkt-phone-grid">
+              {sortedVideos.map((video, index) => (
+                <article
+                  key={video.id}
+                  className={`mkt-phone${video.active === false ? ' is-off' : ''} mkt-anim`}
+                  style={{ animationDelay: `${Math.min(index, 8) * 0.05}s` }}
+                >
+                  <button type="button" className="mkt-phone__screen" onClick={() => openEditVideo(video)}>
                     {video.videoUrl ? (
-                      <video src={mediaUrl(video.videoUrl)} muted autoPlay loop playsInline />
+                      <StatusMedia url={video.videoUrl} mediaType="video" autoPlay loop />
                     ) : (
-                      <div className="mkt-video-card__placeholder">No video</div>
+                      <div className="mkt-media-broken">Upload video</div>
                     )}
-                    <span className={`mkt-badge${video.active === false ? ' mkt-badge--muted' : ''}`}>
-                      {video.active === false ? 'Inactive' : 'Active'}
+                    <div className="mkt-phone__shade" />
+                    <span className={`mkt-chip mkt-chip--${video.active === false ? 'off' : 'live'}`}>
+                      {video.active === false ? 'Off' : 'Live'}
                     </span>
-                  </div>
-                  <div className="mkt-video-card__body">
-                    <h3>{video.title || 'Untitled video'}</h3>
-                    <p className="mkt-video-card__meta">
-                      {video.productName || 'No product'} · Sort {video.sortOrder || 1}
-                    </p>
-                    {video.productPath?.startsWith('/shop/') && (
-                      <p className="mkt-video-card__path">{video.productPath}</p>
-                    )}
-                    <div className="mkt-video-card__actions">
-                      <button type="button" className="mkt-btn mkt-btn--sm" onClick={() => openEditVideo(video)}>
-                        Edit
-                      </button>
-                      <button type="button" className="mkt-btn mkt-btn--sm" onClick={() => toggleVideoActive(video.id)}>
-                        {video.active === false ? 'Activate' : 'Deactivate'}
-                      </button>
-                      <button
-                        type="button"
-                        className="mkt-btn mkt-btn--sm mkt-btn--danger"
-                        onClick={() => removeVideo(video.id)}
-                      >
-                        Remove
-                      </button>
+                    <div className="mkt-phone__caption">
+                      <strong>{video.title || 'Untitled'}</strong>
+                      <span>{video.productName || 'No product'}</span>
                     </div>
+                  </button>
+                  <div className="mkt-phone__actions">
+                    <button type="button" className="adm-btn adm-btn--ghost" onClick={() => openEditVideo(video)}>
+                      Edit
+                    </button>
+                    <button type="button" className="adm-btn adm-btn--ghost" onClick={() => toggleVideoActive(video.id)}>
+                      {video.active === false ? 'Activate' : 'Pause'}
+                    </button>
+                    <button type="button" className="adm-btn adm-btn--danger" onClick={() => removeVideo(video.id)}>
+                      Delete
+                    </button>
                   </div>
                 </article>
               ))}
@@ -578,16 +612,45 @@ export default function Marketing() {
         </section>
       )}
 
+      <div className="mkt-mobile-bar" aria-label="Quick actions">
+        <a className="adm-btn adm-btn--ghost" href="/" target="_blank" rel="noreferrer">
+          Store
+        </a>
+        <button
+          type="button"
+          className="adm-btn adm-btn--ghost"
+          onClick={tab === 'statuses' ? openNewStatus : openNewVideo}
+        >
+          {tab === 'statuses' ? '+ Status' : '+ Video'}
+        </button>
+        <button type="button" className="adm-btn adm-btn--primary" onClick={publish} disabled={saving}>
+          {saving ? '…' : 'Publish'}
+        </button>
+      </div>
+
       {videoModal && (
-        <Modal
-          title={videoModal.mode === 'create' ? 'Add floating video' : 'Edit floating video'}
+        <StudioDrawer
+          title={videoModal.mode === 'create' ? 'New floating video' : 'Edit floating video'}
           onClose={() => setVideoModal(null)}
           onSave={saveVideoModal}
-          saveLabel={videoModal.mode === 'create' ? 'Add Video' : 'Update Video'}
+          saveLabel={videoModal.mode === 'create' ? 'Save video' : 'Update video'}
+          preview={
+            <div className="mkt-drawer-preview mkt-drawer-preview--phone">
+              {videoModal.draft.videoUrl ? (
+                <video src={mediaUrl(videoModal.draft.videoUrl)} muted autoPlay loop playsInline />
+              ) : (
+                <div className="mkt-drawer-preview__empty">Upload to preview</div>
+              )}
+              <div className="mkt-drawer-preview__meta">
+                <strong>{videoModal.draft.title || 'Title'}</strong>
+                <span>{videoModal.draft.productName || 'Select product'}</span>
+              </div>
+            </div>
+          }
         >
-          <div className="mkt-modal__grid">
-            <label className="mkt-field">
-              <span>Title</span>
+          <div className="adm-form-grid">
+            <div className="adm-field adm-field--full">
+              <label>Title</label>
               <input
                 value={videoModal.draft.title}
                 onChange={(e) =>
@@ -595,42 +658,24 @@ export default function Marketing() {
                     prev ? { ...prev, draft: { ...prev.draft, title: e.target.value } } : prev
                   )
                 }
-                placeholder="e.g. Thala Edition"
+                placeholder="Thala Edition"
               />
-            </label>
-
-            <label className="mkt-field">
-              <span>Video file (mp4 / mov, max 50MB)</span>
-              <input
-                type="file"
-                accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
-                disabled={uploadingVideo}
-                onChange={(e) => uploadVideoFile(e.target.files?.[0])}
-              />
-              {uploadingVideo && <em className="mkt-field__hint">Uploading…</em>}
-              {videoModal.draft.videoUrl && (
-                <em className="mkt-field__hint mkt-field__hint--ok">
-                  ✓ {videoModal.draft.videoUrl.split('/').pop()}
-                </em>
-              )}
-              <em className="mkt-field__hint">Tip: compress long phone videos before upload.</em>
-            </label>
-
-            <label className="mkt-field">
-              <span>Instagram URL (optional)</span>
-              <input
-                value={videoModal.draft.instagramUrl || ''}
-                onChange={(e) =>
-                  setVideoModal((prev) =>
-                    prev ? { ...prev, draft: { ...prev.draft, instagramUrl: e.target.value } } : prev
-                  )
-                }
-                placeholder="https://www.instagram.com/reel/XXXXX/"
-              />
-            </label>
-
-            <label className="mkt-field">
-              <span>Product (Buy Now)</span>
+            </div>
+            <div className="adm-field adm-field--full">
+              <label>Video file</label>
+              <label className={`mkt-upload${uploadingVideo ? ' is-busy' : ''}`}>
+                <input
+                  type="file"
+                  accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
+                  disabled={uploadingVideo}
+                  onChange={(e) => uploadVideoFile(e.target.files?.[0])}
+                />
+                <strong>{uploadingVideo ? 'Uploading…' : videoModal.draft.videoUrl ? 'Replace video' : 'Choose video'}</strong>
+                <span>MP4 / MOV · max 50MB</span>
+              </label>
+            </div>
+            <div className="adm-field adm-field--full">
+              <label>Product</label>
               <select
                 value={videoModal.draft.productId || ''}
                 onChange={(e) =>
@@ -639,23 +684,28 @@ export default function Marketing() {
                   )
                 }
               >
-                <option value="">Select a product…</option>
+                <option value="">Select product…</option>
                 {products.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} — ₹{Number(p.price || 0).toLocaleString('en-IN')}
                   </option>
                 ))}
               </select>
-              {videoModal.draft.productPath?.startsWith('/shop/') && (
-                <em className="mkt-field__hint">Path: {videoModal.draft.productPath}</em>
-              )}
-              {!products.length && (
-                <em className="mkt-field__hint mkt-field__hint--warn">Add products in Inventory first.</em>
-              )}
-            </label>
-
-            <label className="mkt-field">
-              <span>Sort order</span>
+            </div>
+            <div className="adm-field">
+              <label>Instagram URL</label>
+              <input
+                value={videoModal.draft.instagramUrl || ''}
+                onChange={(e) =>
+                  setVideoModal((prev) =>
+                    prev ? { ...prev, draft: { ...prev.draft, instagramUrl: e.target.value } } : prev
+                  )
+                }
+                placeholder="Optional"
+              />
+            </div>
+            <div className="adm-field">
+              <label>Sort</label>
               <input
                 type="number"
                 min={1}
@@ -668,9 +718,8 @@ export default function Marketing() {
                   )
                 }
               />
-            </label>
-
-            <label className="mkt-check">
+            </div>
+            <label className="mkt-switch adm-field--full">
               <input
                 type="checkbox"
                 checked={videoModal.draft.active !== false}
@@ -680,29 +729,43 @@ export default function Marketing() {
                   )
                 }
               />
-              Active on storefront
+              <span>Show on storefront</span>
             </label>
           </div>
-
-          {videoModal.draft.videoUrl && (
-            <div className="mkt-modal__preview">
-              <p>Preview</p>
-              <video src={mediaUrl(videoModal.draft.videoUrl)} muted autoPlay loop playsInline />
-            </div>
-          )}
-        </Modal>
+        </StudioDrawer>
       )}
 
       {statusModal && (
-        <Modal
-          title={statusModal.mode === 'create' ? 'Add status ring' : 'Edit status ring'}
+        <StudioDrawer
+          title={statusModal.mode === 'create' ? 'New status ring' : 'Edit status ring'}
           onClose={() => setStatusModal(null)}
           onSave={saveStatusModal}
-          saveLabel={statusModal.mode === 'create' ? 'Add Status' : 'Update Status'}
+          saveLabel={statusModal.mode === 'create' ? 'Save status' : 'Update status'}
+          preview={
+            <div className="mkt-drawer-preview mkt-drawer-preview--ring">
+              <div className="mkt-ring mkt-ring--lg">
+                <span className="mkt-ring__halo">
+                  <span className="mkt-ring__media">
+                    {statusModal.draft.mediaUrl ? (
+                      <StatusMedia
+                        url={statusModal.draft.mediaUrl}
+                        mediaType={statusModal.draft.mediaType}
+                        autoPlay={inferMediaType(statusModal.draft.mediaUrl, statusModal.draft.mediaType) === 'video'}
+                        loop
+                      />
+                    ) : (
+                      <div className="mkt-media-broken">Media</div>
+                    )}
+                  </span>
+                </span>
+                <span className="mkt-ring__name">{statusModal.draft.title || 'Name'}</span>
+              </div>
+            </div>
+          }
         >
-          <div className="mkt-modal__grid">
-            <label className="mkt-field">
-              <span>Name under circle</span>
+          <div className="adm-form-grid">
+            <div className="adm-field">
+              <label>Name</label>
               <input
                 value={statusModal.draft.title}
                 onChange={(e) =>
@@ -710,12 +773,11 @@ export default function Marketing() {
                     prev ? { ...prev, draft: { ...prev.draft, title: e.target.value } } : prev
                   )
                 }
-                placeholder="New bat / Offer / Sale"
+                placeholder="New arrival"
               />
-            </label>
-
-            <label className="mkt-field">
-              <span>How many days to show</span>
+            </div>
+            <div className="adm-field">
+              <label>Duration</label>
               <select
                 value={statusModal.draft.durationDays || 1}
                 onChange={(e) =>
@@ -739,27 +801,28 @@ export default function Marketing() {
                   </option>
                 ))}
               </select>
-              <em className="mkt-field__hint">Default is 1 day. Max 7 days. Timer starts on Publish / media change.</em>
-            </label>
-
-            <label className="mkt-field mkt-field--full">
-              <span>Photo or video</span>
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime,.jpg,.jpeg,.png,.webp,.gif,.mp4,.webm,.mov"
-                disabled={uploadingStatus}
-                onChange={(e) => uploadStatusMedia(e.target.files?.[0])}
-              />
-              {uploadingStatus && <em className="mkt-field__hint">Uploading…</em>}
-              {statusModal.draft.mediaUrl && (
-                <em className="mkt-field__hint mkt-field__hint--ok">
-                  ✓ {statusModal.draft.mediaType} · {statusModal.draft.mediaUrl.split('/').pop()}
-                </em>
-              )}
-            </label>
-
-            <label className="mkt-field mkt-field--full">
-              <span>Caption (optional)</span>
+            </div>
+            <div className="adm-field adm-field--full">
+              <label>Photo or video</label>
+              <label className={`mkt-upload${uploadingStatus ? ' is-busy' : ''}`}>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime,.jpg,.jpeg,.png,.webp,.gif,.mp4,.webm,.mov"
+                  disabled={uploadingStatus}
+                  onChange={(e) => uploadStatusMedia(e.target.files?.[0])}
+                />
+                <strong>
+                  {uploadingStatus
+                    ? 'Uploading…'
+                    : statusModal.draft.mediaUrl
+                      ? 'Replace media'
+                      : 'Choose photo / video'}
+                </strong>
+                <span>JPG, PNG, WEBP, MP4 · max 50MB</span>
+              </label>
+            </div>
+            <div className="adm-field adm-field--full">
+              <label>Caption</label>
               <input
                 value={statusModal.draft.text}
                 onChange={(e) =>
@@ -767,12 +830,11 @@ export default function Marketing() {
                     prev ? { ...prev, draft: { ...prev.draft, text: e.target.value } } : prev
                   )
                 }
-                placeholder="Shown inside the full-screen viewer"
+                placeholder="Optional"
               />
-            </label>
-
-            <label className="mkt-field">
-              <span>WhatsApp CTA text</span>
+            </div>
+            <div className="adm-field">
+              <label>WhatsApp CTA</label>
               <input
                 value={statusModal.draft.ctaText}
                 onChange={(e) =>
@@ -782,10 +844,9 @@ export default function Marketing() {
                 }
                 placeholder="Message us"
               />
-            </label>
-
-            <label className="mkt-field">
-              <span>Sort order</span>
+            </div>
+            <div className="adm-field">
+              <label>Sort</label>
               <input
                 type="number"
                 min={1}
@@ -798,10 +859,9 @@ export default function Marketing() {
                   )
                 }
               />
-            </label>
-
-            <label className="mkt-field mkt-field--full">
-              <span>Prefill WhatsApp message</span>
+            </div>
+            <div className="adm-field adm-field--full">
+              <label>WhatsApp prefill</label>
               <textarea
                 rows={2}
                 value={statusModal.draft.prefillMessage}
@@ -812,11 +872,10 @@ export default function Marketing() {
                       : prev
                   )
                 }
-                placeholder="Hi H2R Sports! I saw your status."
+                placeholder="Hi H2R Sports!"
               />
-            </label>
-
-            <label className="mkt-check">
+            </div>
+            <label className="mkt-switch adm-field--full">
               <input
                 type="checkbox"
                 checked={statusModal.draft.active !== false}
@@ -826,11 +885,10 @@ export default function Marketing() {
                   )
                 }
               />
-              Active on storefront
+              <span>Show on storefront</span>
             </label>
-
             {statusModal.mode === 'edit' && (
-              <label className="mkt-check">
+              <label className="mkt-switch adm-field--full">
                 <input
                   type="checkbox"
                   checked={!!statusModal.draft.resetTimer}
@@ -840,50 +898,29 @@ export default function Marketing() {
                     )
                   }
                 />
-                Restart expiry timer from now (on Publish)
+                <span>Restart timer on Publish</span>
               </label>
             )}
           </div>
-
-          {statusModal.draft.mediaUrl && (
-            <div className="mkt-modal__preview mkt-modal__preview--ring">
-              <p>Ring preview</p>
-              <div className="mkt-preview-ring">
-                <span className="mkt-preview-ring__halo">
-                  <span className="mkt-preview-ring__media">
-                    {statusModal.draft.mediaType === 'video' ? (
-                      <video src={mediaUrl(statusModal.draft.mediaUrl)} muted autoPlay loop playsInline />
-                    ) : (
-                      <img src={mediaUrl(statusModal.draft.mediaUrl)} alt="" />
-                    )}
-                  </span>
-                </span>
-                <span>{statusModal.draft.title || 'Update'}</span>
-              </div>
-            </div>
-          )}
-        </Modal>
+        </StudioDrawer>
       )}
     </div>
   );
 }
 
-function EmptyState({ title, text, actionLabel, onAction }) {
+function EmptyState({ title, actionLabel, onAction }) {
   return (
     <div className="mkt-empty">
-      <div className="mkt-empty__icon" aria-hidden>
-        +
-      </div>
+      <div className="mkt-empty__visual" aria-hidden />
       <h3>{title}</h3>
-      <p>{text}</p>
-      <button type="button" className="mkt-btn mkt-btn--primary" onClick={onAction}>
+      <button type="button" className="adm-btn adm-btn--primary" onClick={onAction}>
         {actionLabel}
       </button>
     </div>
   );
 }
 
-function Modal({ title, children, onClose, onSave, saveLabel }) {
+function StudioDrawer({ title, children, onClose, onSave, saveLabel, preview }) {
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'Escape') onClose();
@@ -897,30 +934,36 @@ function Modal({ title, children, onClose, onSave, saveLabel }) {
   }, [onClose]);
 
   return (
-    <div className="mkt-overlay" role="presentation" onClick={onClose}>
-      <div
-        className="mkt-modal"
+    <div className="adm-drawer-backdrop mkt-drawer-backdrop" onClick={onClose} role="presentation">
+      <aside
+        className="adm-drawer mkt-drawer"
+        onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        onClick={(e) => e.stopPropagation()}
       >
-        <div className="mkt-modal__head">
-          <h2>{title}</h2>
-          <button type="button" className="mkt-modal__close" onClick={onClose} aria-label="Close">
-            ×
+        <div className="mkt-drawer__handle" aria-hidden />
+        <div className="adm-drawer__head">
+          <strong>{title}</strong>
+          <button type="button" className="adm-btn adm-btn--ghost" onClick={onClose}>
+            Close
           </button>
         </div>
-        <div className="mkt-modal__body">{children}</div>
-        <div className="mkt-modal__foot">
-          <button type="button" className="mkt-btn mkt-btn--ghost" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="button" className="mkt-btn mkt-btn--primary" onClick={onSave}>
-            {saveLabel}
-          </button>
+        <div className="mkt-drawer__layout">
+          <div className="mkt-drawer__preview-pane">{preview}</div>
+          <div className="mkt-drawer__form-pane">
+            {children}
+            <div className="mkt-drawer__foot">
+              <button type="button" className="adm-btn adm-btn--ghost" onClick={onClose}>
+                Cancel
+              </button>
+              <button type="button" className="adm-btn adm-btn--primary" onClick={onSave}>
+                {saveLabel}
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      </aside>
     </div>
   );
 }

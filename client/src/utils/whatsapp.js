@@ -5,7 +5,7 @@ function waLink(text) {
 }
 
 /** Product buy / shopping redirect on WhatsApp */
-export function buildWhatsAppOrderUrl({ product, size, qty = 1, pageUrl }) {
+export function buildWhatsAppOrderUrl({ product, size, weight, qty = 1, pageUrl }) {
   const total = formatINR(size.price * qty);
   const lines = [
     `Hi ${BRAND.name}!`,
@@ -13,6 +13,9 @@ export function buildWhatsAppOrderUrl({ product, size, qty = 1, pageUrl }) {
     ``,
     `*${product.name}*`,
     `Size: ${size.label}`,
+    weight?.label
+      ? `Weight: ${weight.from && weight.to ? `${weight.from}g – ${weight.to}g` : weight.label}`
+      : null,
     `Qty: ${qty}`,
     `Price: ${total}`,
     product.willow ? `Willow: ${product.willow}` : null,

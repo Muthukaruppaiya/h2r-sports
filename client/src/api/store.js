@@ -41,6 +41,16 @@ export const api = {
     return res.data;
   },
 
+  async createRazorpayOrder(payload) {
+    const res = await client.post('/payments/razorpay/create', payload);
+    return res.data;
+  },
+
+  async verifyRazorpayPayment(payload) {
+    const res = await client.post('/payments/razorpay/verify', payload);
+    return res.data;
+  },
+
   async getOrder(id) {
     const res = await client.get(`/orders/${id}`);
     return res.data;

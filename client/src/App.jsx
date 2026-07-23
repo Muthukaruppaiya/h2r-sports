@@ -27,6 +27,8 @@ import AdminCustomers from './pages/admin/Customers';
 import AdminReports from './pages/admin/Reports';
 import AdminIntegrations from './pages/admin/Integrations';
 import AdminMarketing from './pages/admin/Marketing';
+import AdminBilling from './pages/admin/Billing';
+import AdminStoreBilling from './pages/admin/StoreBilling';
 
 function ScrollLock() {
   const { pathname } = useLocation();
@@ -105,6 +107,8 @@ export default function App() {
           <Route path="customers" element={<AdminCustomers />} />
           <Route path="reports" element={<AdminReports />} />
           <Route path="marketing" element={<AdminMarketing />} />
+          <Route path="billing" element={<AdminBilling />} />
+          <Route path="store-billing" element={<AdminStoreBilling />} />
           <Route path="integrations" element={<AdminIntegrations />} />
         </Route>
       </Routes>

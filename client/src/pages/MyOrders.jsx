@@ -83,9 +83,6 @@ export default function MyOrders() {
 
   const getEffectiveStageIndex = (order) => {
     if (order.status === 'cancelled') return -1;
-    if (order.paymentMethod === 'cod' && order.status === 'confirmed' && order.paymentStatus === 'pending_cod') {
-      return 1;
-    }
     return getStageIndex(order.status);
   };
 
@@ -299,7 +296,10 @@ export default function MyOrders() {
                               <div key={`${item.id}-${item.sizeId}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '1.25rem 0', borderBottom: '1px solid var(--gray-100)' }}>
                                 <div style={{ flex: 1, paddingRight: '1.5rem' }}>
                                   <div style={{ fontWeight: '600', color: 'var(--navy)', marginBottom: '0.35rem', fontSize: '1.05rem', lineHeight: '1.4' }}>{item.name}</div>
-                                  <div style={{ fontSize: '0.9rem', color: 'var(--gray-600)' }}>Variant: {item.sizeLabel}</div>
+                                  <div style={{ fontSize: '0.9rem', color: 'var(--gray-600)' }}>
+                                    Variant: {item.sizeLabel}
+                                    {item.weightLabel ? ` · ${item.weightLabel}` : ''}
+                                  </div>
                                 </div>
                                 <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                                   <div style={{ fontWeight: '700', color: 'var(--navy)', fontSize: '1.1rem', marginBottom: '0.35rem' }}>₹{item.lineTotal.toLocaleString('en-IN')}</div>
@@ -363,7 +363,10 @@ export default function MyOrders() {
                               const isCompleted = index <= effectiveIndex;
                               const isCurrent = index === effectiveIndex;
                               const isLast = index === STATUS_STAGES.length - 1;
-                              const stageDate = order.statusTimestamps?.[`${stage.id}At`];
+                              const stageDate =
+                                order.statusTimestamps?.[`${stage.id}At`] ||
+                                (stage.id === 'ordered' ? order.statusTimestamps?.confirmedAt : null) ||
+                                (stage.id === 'accepted' ? order.statusTimestamps?.paidAt : null);
 
                               return (
                                 <div key={stage.id} className={`timeline-item ${isCompleted ? 'completed' : ''} ${isCurrent ? 'current' : ''}`} style={{ position: 'relative', paddingBottom: isLast ? '0' : '2.5rem' }}>
@@ -399,6 +402,39 @@ export default function MyOrders() {
                               );
                             })}
                           </div>
+
+                          {order.courier?.trackingId && (
+                            <div style={{
+                              marginTop: '1.5rem',
+                              padding: '1rem 1.15rem',
+                              borderRadius: 12,
+                              background: '#eef2ff',
+                              border: '1px solid #c7d2fe',
+                            }}>
+                              <h4 style={{ margin: '0 0 0.5rem', color: '#3730a3' }}>Courier tracking</h4>
+                              <p style={{ margin: '0.2rem 0', color: '#312e81' }}>
+                                <strong>{order.courier.name || 'Courier'}</strong>
+                              </p>
+                              <p style={{ margin: '0.2rem 0', color: '#4338ca' }}>
+                                Tracking ID: {order.courier.trackingId}
+                              </p>
+                              {order.courier.trackingUrl && (
+                                <a
+                                  href={order.courier.trackingUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{ color: '#1d4ed8', fontWeight: 700 }}
+                                >
+                                  Track shipment →
+                                </a>
+                              )}
+                              {order.courier.notes && (
+                                <p style={{ margin: '0.5rem 0 0', fontSize: '0.9rem', color: '#64748b' }}>
+                                  {order.courier.notes}
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
 

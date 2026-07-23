@@ -11,6 +11,7 @@ export default function ProductDetail() {
   const navigate = useNavigate();
   const [product, setProduct] = useState(null);
   const [sizeId, setSizeId] = useState('');
+  const [weightId, setWeightId] = useState('');
   const [qty, setQty] = useState(1);
   const [error, setError] = useState('');
   const [descOpen, setDescOpen] = useState(false);
@@ -25,6 +26,10 @@ export default function ProductDetail() {
         if (cancelled) return;
         setProduct(data);
         setSizeId(data.sizes?.[0]?.id || '');
+        const firstWeight =
+          data.weights?.[0]?.id ||
+          (data.weight ? 'default' : '');
+        setWeightId(firstWeight);
       })
       .catch(() => {
         if (!cancelled) setError('This product is unavailable right now.');
@@ -64,6 +69,24 @@ export default function ProductDetail() {
     ? product.sizes
     : [{ id: 'default', label: 'Standard', price: product.price }];
   const size = sizes.find((s) => s.id === sizeId) || sizes[0];
+  const weights = (product.weights || [])
+    .map((w) => {
+      const from = w.from || '';
+      const to = w.to || '';
+      const label =
+        w.label ||
+        (from && to ? `${from}g – ${to}g` : '') ||
+        '';
+      if (!w.id && !label) return null;
+      return {
+        id: w.id || `${from}-${to}` || 'default',
+        from,
+        to,
+        label,
+      };
+    })
+    .filter(Boolean);
+  const weight = weights.find((w) => w.id === weightId) || weights[0] || null;
   const trustItems = product.features?.length
     ? product.features
     : ['Free premium cover', '6 months handle warranty', 'UPI / Cards', 'Pan-India delivery'];
@@ -73,6 +96,12 @@ export default function ProductDetail() {
     name: product.name,
     sizeId: size.id,
     sizeLabel: size.label,
+    weightId: weight?.id || '',
+    weightLabel: weight
+      ? weight.from && weight.to
+        ? `${weight.from}g – ${weight.to}g`
+        : weight.label || ''
+      : '',
     price: size.price,
     qty,
   };
@@ -86,6 +115,7 @@ export default function ProductDetail() {
     const url = buildWhatsAppOrderUrl({
       product,
       size,
+      weight,
       qty,
       pageUrl: window.location.href,
     });
@@ -139,10 +169,6 @@ export default function ProductDetail() {
               <dd>{product.willow?.trim() || '—'}</dd>
             </div>
             <div>
-              <dt>Weight</dt>
-              <dd>{product.weight?.trim() || '—'}</dd>
-            </div>
-            <div>
               <dt>Made in</dt>
               <dd>{product.madeIn?.trim() || 'Tamil Nadu, India'}</dd>
             </div>
@@ -167,6 +193,23 @@ export default function ProductDetail() {
             </select>
           </div>
 
+          {weights.length > 0 && (
+            <div className="pdp__field">
+              <label htmlFor="pdp-weight">Weight range</label>
+              <select
+                id="pdp-weight"
+                value={weight?.id || ''}
+                onChange={(e) => setWeightId(e.target.value)}
+              >
+                {weights.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.from && w.to ? `${w.from}g – ${w.to}g` : w.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="pdp__field">
             <label htmlFor="pdp-qty">Quantity</label>
             <input
@@ -188,7 +231,10 @@ export default function ProductDetail() {
             </button>
           </div>
 
-          <p className="pdp__ship-note">{INDIA.returnsNote} · UPI / Cards</p>
+          <p className="pdp__ship-note">
+            {INDIA.returnsNote} ·{' '}
+            <Link to="/policies/terms">View policies</Link>
+          </p>
 
           {!product.features?.length && (
             <ul className="product__highlights">
@@ -203,7 +249,10 @@ export default function ProductDetail() {
       <div className="pdp-sticky" aria-label="Quick buy">
         <div className="pdp-sticky__price">
           <strong>{formatINR(size.price * qty)}</strong>
-          <span>{size.label}</span>
+          <span>
+            {size.label}
+            {weight?.label ? ` · ${weight.label}` : ''}
+          </span>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flex: 1 }}>
           <button
