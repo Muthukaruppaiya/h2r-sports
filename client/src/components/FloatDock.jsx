@@ -2,7 +2,7 @@ import FloatingWhatsApp from './FloatingWhatsApp';
 import WatchBuyVideo from './WatchBuyVideo';
 
 /**
- * Stacks WhatsApp above Watch & Buy so they never overlap.
+ * WhatsApp stays bottom-right; Watch & Buy sits above it and can be dragged freely.
  */
 export default function FloatDock({ showVideo }) {
   return (
@@ -10,8 +10,8 @@ export default function FloatDock({ showVideo }) {
       className={`float-dock${showVideo ? '' : ' float-dock--wa-only'}`}
       aria-label="Quick actions"
     >
-      <FloatingWhatsApp />
       {showVideo ? <WatchBuyVideo docked /> : null}
+      <FloatingWhatsApp />
     </div>
   );
 }

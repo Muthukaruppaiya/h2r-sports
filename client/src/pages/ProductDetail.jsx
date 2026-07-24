@@ -94,6 +94,7 @@ export default function ProductDetail() {
   const buyPayload = {
     id: product.id,
     name: product.name,
+    image: product.images?.[0] || product.image || '',
     sizeId: size.id,
     sizeLabel: size.label,
     weightId: weight?.id || '',
@@ -103,6 +104,7 @@ export default function ProductDetail() {
         : weight.label || ''
       : '',
     price: size.price,
+    compareAt: product.compareAt || size.compareAt || null,
     qty,
   };
 

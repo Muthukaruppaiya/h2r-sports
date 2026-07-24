@@ -4,6 +4,7 @@ import { apiUrl, mediaUrl } from '../config/api.js';
 
 const DRAG_THRESHOLD = 8;
 const STORAGE_KEY = 'h2r_watchbuy_dismissed';
+const POS_KEY = 'h2r_watchbuy_pos';
 
 function tryPlay(el) {
   if (!el) return;
@@ -17,9 +18,30 @@ function tryPlay(el) {
   if (p?.catch) p.catch(() => {});
 }
 
+function clampPos(left, top, width, height) {
+  const pad = 8;
+  const maxL = Math.max(pad, window.innerWidth - width - pad);
+  const maxT = Math.max(pad, window.innerHeight - height - pad);
+  return {
+    left: Math.min(maxL, Math.max(pad, left)),
+    top: Math.min(maxT, Math.max(pad, top)),
+  };
+}
+
+function readSavedPos() {
+  try {
+    const raw = sessionStorage.getItem(POS_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    if (typeof p?.left !== 'number' || typeof p?.top !== 'number') return null;
+    return p;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Mini autoplay video in the float dock (WhatsApp sits above it).
- * Drag nudges temporarily; tap expands. Buy Now → product page.
+ * Mini autoplay video above WhatsApp. Drag to move; position sticks. Tap to expand.
  */
 export default function WatchBuyVideo({
   productPath = '/shop',
@@ -30,11 +52,14 @@ export default function WatchBuyVideo({
   const { pathname } = useLocation();
   const miniRef = useRef(null);
   const fullRef = useRef(null);
+  const shellRef = useRef(null);
   const dragRef = useRef({
     active: false,
     moved: false,
     startX: 0,
     startY: 0,
+    originLeft: 0,
+    originTop: 0,
     pointerId: null,
   });
 
@@ -43,22 +68,19 @@ export default function WatchBuyVideo({
   const [dismissed, setDismissed] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [videoIndex, setVideoIndex] = useState(0);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [pos, setPos] = useState(() => readSavedPos());
   const [dragging, setDragging] = useState(false);
 
   const currentVideo = videos[videoIndex];
   const src = mediaUrl(currentVideo?.videoUrl);
-  const fallbackSrc = currentVideo?.videoUrl
-    ? mediaUrl(currentVideo.videoUrl)
-    : '';
+  const fallbackSrc = currentVideo?.videoUrl ? mediaUrl(currentVideo.videoUrl) : '';
   const buyPath = currentVideo?.productPath || productPath;
   const buyName = currentVideo?.productName || productName;
+  const isFree = Boolean(pos);
 
   useEffect(() => {
     const isBrowse =
-      pathname === '/' ||
-      pathname === '/shop' ||
-      pathname.startsWith('/collections');
+      pathname === '/' || pathname === '/shop' || pathname.startsWith('/collections');
     if (isBrowse) {
       sessionStorage.removeItem(STORAGE_KEY);
       setDismissed(false);
@@ -85,7 +107,7 @@ export default function WatchBuyVideo({
         if (!mounted) return;
         const list = (data.floatingVideos || []).filter((v) => v.videoUrl);
         setVideos(list);
-      } catch (_err) {
+      } catch {
         if (!mounted) return;
         setVideos([]);
       } finally {
@@ -139,16 +161,37 @@ export default function WatchBuyVideo({
     };
   }, [expanded]);
 
+  useEffect(() => {
+    if (!pos) return undefined;
+    const onResize = () => {
+      const el = shellRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      setPos((prev) => {
+        if (!prev) return prev;
+        const next = clampPos(prev.left, prev.top, rect.width, rect.height);
+        sessionStorage.setItem(POS_KEY, JSON.stringify(next));
+        return next;
+      });
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [pos]);
+
   const onPointerDown = (e) => {
     if (e.button !== undefined && e.button !== 0) return;
     if (e.target.closest('.watchbuy__close')) return;
+    const el = e.currentTarget;
+    const rect = el.getBoundingClientRect();
     const d = dragRef.current;
     d.active = true;
     d.moved = false;
     d.startX = e.clientX;
     d.startY = e.clientY;
+    d.originLeft = pos?.left ?? rect.left;
+    d.originTop = pos?.top ?? rect.top;
     d.pointerId = e.pointerId;
-    e.currentTarget.setPointerCapture?.(e.pointerId);
+    el.setPointerCapture?.(e.pointerId);
   };
 
   const onPointerMove = (e) => {
@@ -161,7 +204,12 @@ export default function WatchBuyVideo({
       setDragging(true);
     }
     if (!d.moved) return;
-    setDragOffset({ x: dx, y: dy });
+
+    const el = shellRef.current;
+    const w = el?.offsetWidth || 112;
+    const h = el?.offsetHeight || 140;
+    const next = clampPos(d.originLeft + dx, d.originTop + dy, w, h);
+    setPos(next);
   };
 
   const endPointer = (e) => {
@@ -170,13 +218,21 @@ export default function WatchBuyVideo({
     const wasDrag = d.moved;
     d.active = false;
     setDragging(false);
-    setDragOffset({ x: 0, y: 0 });
     try {
       e.currentTarget.releasePointerCapture?.(d.pointerId);
-    } catch (_err) {
+    } catch {
       /* ignore */
     }
-    if (!wasDrag) setExpanded(true);
+    if (wasDrag) {
+      const el = shellRef.current;
+      const w = el?.offsetWidth || 112;
+      const h = el?.offsetHeight || 140;
+      const next = clampPos(d.originLeft + (e.clientX - d.startX), d.originTop + (e.clientY - d.startY), w, h);
+      setPos(next);
+      sessionStorage.setItem(POS_KEY, JSON.stringify(next));
+    } else {
+      setExpanded(true);
+    }
   };
 
   const handleBuyNow = () => {
@@ -186,11 +242,14 @@ export default function WatchBuyVideo({
 
   if (!loaded || dismissed || videos.length === 0 || !src) return null;
 
-  const miniStyle = docked
+  const miniStyle = isFree
     ? {
-        transform: dragging
-          ? `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0) scale(1.02)`
-          : undefined,
+        position: 'fixed',
+        left: pos.left,
+        top: pos.top,
+        right: 'auto',
+        bottom: 'auto',
+        zIndex: dragging ? 1400 : 1310,
       }
     : undefined;
 
@@ -198,8 +257,12 @@ export default function WatchBuyVideo({
     <>
       {!expanded && (
         <aside
-          className={`watchbuy watchbuy--mini${docked ? ' watchbuy--docked' : ''}${dragging ? ' is-dragging' : ''}`}
-          aria-label="Watch and buy"
+          ref={shellRef}
+          className={`watchbuy watchbuy--mini${docked && !isFree ? ' watchbuy--docked' : ''}${
+            isFree ? ' watchbuy--free' : ''
+          }${dragging ? ' is-dragging' : ''}`}
+          aria-label="Watch and buy — drag to move"
+          title="Drag to move · Tap to open"
           style={miniStyle}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -242,7 +305,7 @@ export default function WatchBuyVideo({
                 }}
               />
             </div>
-            <span className="watchbuy__tap-hint">Tap to open</span>
+            <span className="watchbuy__tap-hint">Drag · Tap</span>
           </div>
         </aside>
       )}

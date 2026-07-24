@@ -15,6 +15,7 @@ import User from './models/User.js';
 import MarketingSettings from './models/MarketingSettings.js';
 import Media from './models/Media.js';
 import StoreBill from './models/StoreBill.js';
+import PendingCheckout from './models/PendingCheckout.js';
 import { buildStatusUpdate, isValidStatus } from './utils/orderStatus.js';
 import { parseInstagramUrl } from './utils/instagram.js';
 import { buildLineItemsFromRequest, validateCheckoutPayload } from './utils/orderCheckout.js';
@@ -348,15 +349,61 @@ const admin = (req, res, next) => {
   }
 };
 
+function normalizePhone(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) return digits.slice(2);
+  if (digits.length === 11 && digits.startsWith('0')) return digits.slice(1);
+  return digits;
+}
+
+function isValidIndianPhone(phone) {
+  return /^[6-9]\d{9}$/.test(normalizePhone(phone));
+}
+
+function authUserPayload(user, token) {
+  return {
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone || '',
+    role: user.role,
+    token,
+  };
+}
+
+function publicAddresses(user) {
+  return (user.addresses || []).map((a) => ({
+    id: String(a._id),
+    label: a.label || 'Home',
+    name: a.name,
+    phone: a.phone,
+    addressLine1: a.addressLine1,
+    addressLine2: a.addressLine2 || '',
+    city: a.city,
+    state: a.state,
+    pincode: a.pincode,
+    isDefault: !!a.isDefault,
+  }));
+}
+
 // ─── Auth Routes ──────────────────────────────────────────────────────────────
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { name, email, password, phone } = req.body;
     const userExists = await User.findOne({ email });
     if (userExists) return res.status(400).json({ error: 'User already exists' });
-    const user = await User.create({ name, email, password, phone });
+    const cleanPhone = phone ? normalizePhone(phone) : '';
+    if (cleanPhone && !isValidIndianPhone(cleanPhone)) {
+      return res.status(400).json({ error: 'Enter a valid 10-digit mobile number' });
+    }
+    const user = await User.create({
+      name,
+      email,
+      password,
+      phone: cleanPhone,
+    });
     const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '30d' });
-    res.status(201).json({ _id: user._id, name: user.name, email: user.email, role: user.role, token });
+    res.status(201).json(authUserPayload(user, token));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -368,7 +415,7 @@ app.post('/api/auth/login', async (req, res) => {
     const user = await User.findOne({ email });
     if (user && (await user.matchPassword(password))) {
       const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '30d' });
-      res.json({ _id: user._id, name: user.name, email: user.email, role: user.role, token });
+      res.json(authUserPayload(user, token));
     } else {
       res.status(401).json({ error: 'Invalid email or password' });
     }
@@ -377,8 +424,87 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+/** Checkout phone gate — does this mobile already have an account? */
+app.post('/api/auth/phone/check', async (req, res) => {
+  try {
+    const phone = normalizePhone(req.body?.phone);
+    if (!isValidIndianPhone(phone)) {
+      return res.status(400).json({ error: 'Enter a valid 10-digit Indian mobile number' });
+    }
+    const user = await User.findOne({ phone });
+    res.json({
+      exists: !!user,
+      name: user?.name || '',
+      phone,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Continue checkout with phone:
+ * - existing customer → log in
+ * - new customer → create with name + phone (basic details)
+ */
+app.post('/api/auth/phone/continue', async (req, res) => {
+  try {
+    const phone = normalizePhone(req.body?.phone);
+    const name = String(req.body?.name || '').trim();
+    if (!isValidIndianPhone(phone)) {
+      return res.status(400).json({ error: 'Enter a valid 10-digit Indian mobile number' });
+    }
+
+    let user = await User.findOne({ phone });
+    if (user) {
+      if (user.role === 'admin') {
+        return res.status(400).json({ error: 'Admin accounts must sign in with email' });
+      }
+      const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '30d' });
+      return res.json({
+        ...authUserPayload(user, token),
+        addresses: publicAddresses(user),
+        isNew: false,
+      });
+    }
+
+    if (!name || name.length < 2) {
+      return res.status(400).json({ error: 'Enter your name to create an account', needName: true });
+    }
+
+    const email = `${phone}@phone.h2rsports.in`;
+    const password = `h2r_${phone}_${Math.random().toString(36).slice(2, 10)}`;
+    user = await User.create({
+      name,
+      email,
+      password,
+      phone,
+      role: 'customer',
+      addresses: [],
+    });
+    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '30d' });
+    res.status(201).json({
+      ...authUserPayload(user, token),
+      addresses: [],
+      isNew: true,
+    });
+  } catch (err) {
+    if (err?.code === 11000) {
+      return res.status(400).json({ error: 'This mobile or email is already registered' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/auth/me', protect, (req, res) => {
-  res.json({ _id: req.user._id, name: req.user.name, email: req.user.email, phone: req.user.phone, role: req.user.role });
+  res.json({
+    _id: req.user._id,
+    name: req.user.name,
+    email: req.user.email,
+    phone: req.user.phone,
+    role: req.user.role,
+    addresses: publicAddresses(req.user),
+  });
 });
 
 app.put('/api/auth/profile', protect, async (req, res) => {
@@ -387,7 +513,13 @@ app.put('/api/auth/profile', protect, async (req, res) => {
     
     // Update user profile
     req.user.name = name || req.user.name;
-    req.user.phone = phone !== undefined ? phone : req.user.phone;
+    if (phone !== undefined) {
+      const cleanPhone = normalizePhone(phone);
+      if (cleanPhone && !isValidIndianPhone(cleanPhone)) {
+        return res.status(400).json({ error: 'Enter a valid 10-digit mobile number' });
+      }
+      req.user.phone = cleanPhone;
+    }
     const updatedUser = await req.user.save();
 
     // Also update their details in past orders to keep the admin view synchronized
@@ -396,7 +528,118 @@ app.put('/api/auth/profile', protect, async (req, res) => {
       { $set: { 'customer.name': updatedUser.name, 'customer.phone': updatedUser.phone } }
     );
 
-    res.json({ _id: updatedUser._id, name: updatedUser.name, email: updatedUser.email, phone: updatedUser.phone, role: updatedUser.role });
+    res.json({
+      _id: updatedUser._id,
+      name: updatedUser.name,
+      email: updatedUser.email,
+      phone: updatedUser.phone,
+      role: updatedUser.role,
+      addresses: publicAddresses(updatedUser),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/auth/addresses', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    res.json({ addresses: publicAddresses(user) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/addresses', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    const body = req.body || {};
+    const phone = normalizePhone(body.phone || user.phone);
+    if (!body.name?.trim() || !body.addressLine1?.trim() || !body.city?.trim() || !body.state || !body.pincode) {
+      return res.status(400).json({ error: 'Name, address, city, state and PIN are required' });
+    }
+    if (!isValidIndianPhone(phone)) {
+      return res.status(400).json({ error: 'Enter a valid 10-digit mobile number' });
+    }
+    if (!/^\d{6}$/.test(String(body.pincode))) {
+      return res.status(400).json({ error: 'Enter a valid 6-digit PIN code' });
+    }
+
+    const entry = {
+      label: String(body.label || 'Home').trim() || 'Home',
+      name: String(body.name).trim(),
+      phone,
+      addressLine1: String(body.addressLine1).trim(),
+      addressLine2: String(body.addressLine2 || '').trim(),
+      city: String(body.city).trim(),
+      state: body.state,
+      pincode: String(body.pincode),
+      isDefault: user.addresses.length === 0 ? true : !!body.isDefault,
+    };
+
+    if (entry.isDefault) {
+      user.addresses.forEach((a) => {
+        a.isDefault = false;
+      });
+    }
+    user.addresses.push(entry);
+    await user.save();
+    res.status(201).json({ addresses: publicAddresses(user) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/auth/addresses/:id', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    const addr = user.addresses.id(req.params.id);
+    if (!addr) return res.status(404).json({ error: 'Address not found' });
+
+    const body = req.body || {};
+    if (body.label != null) addr.label = String(body.label).trim() || addr.label;
+    if (body.name != null) addr.name = String(body.name).trim();
+    if (body.phone != null) {
+      const phone = normalizePhone(body.phone);
+      if (!isValidIndianPhone(phone)) {
+        return res.status(400).json({ error: 'Enter a valid 10-digit mobile number' });
+      }
+      addr.phone = phone;
+    }
+    if (body.addressLine1 != null) addr.addressLine1 = String(body.addressLine1).trim();
+    if (body.addressLine2 != null) addr.addressLine2 = String(body.addressLine2).trim();
+    if (body.city != null) addr.city = String(body.city).trim();
+    if (body.state != null) addr.state = body.state;
+    if (body.pincode != null) {
+      if (!/^\d{6}$/.test(String(body.pincode))) {
+        return res.status(400).json({ error: 'Enter a valid 6-digit PIN code' });
+      }
+      addr.pincode = String(body.pincode);
+    }
+    if (body.isDefault) {
+      user.addresses.forEach((a) => {
+        a.isDefault = String(a._id) === String(addr._id);
+      });
+    }
+    await user.save();
+    res.json({ addresses: publicAddresses(user) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/auth/addresses/:id', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    const addr = user.addresses.id(req.params.id);
+    if (!addr) return res.status(404).json({ error: 'Address not found' });
+    const wasDefault = addr.isDefault;
+    addr.deleteOne();
+    if (wasDefault && user.addresses.length) {
+      user.addresses[0].isDefault = true;
+    }
+    await user.save();
+    res.json({ addresses: publicAddresses(user) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -544,6 +787,7 @@ app.post('/api/payments/razorpay/create', async (req, res) => {
       return res.status(400).json({ error: 'Order total must be at least ₹1' });
     }
 
+    // Reserved shop order id — Order document is created ONLY after payment success
     const orderId = makeOrderId();
     const amountPaise = rupeesToPaise(total);
     const razorpay = getRazorpayClient();
@@ -557,41 +801,31 @@ app.post('/api/payments/razorpay/create', async (req, res) => {
       },
     });
 
-    const now = new Date();
-    const order = await Order.create({
-      orderId,
-      status: 'ordered',
-      paymentStatus: 'pending',
-      paymentMethod: 'razorpay',
-      razorpayOrderId: rzpOrder.id,
-      paymentMeta: {
-        gateway: 'razorpay',
+    await PendingCheckout.findOneAndUpdate(
+      { orderId },
+      {
+        orderId,
         razorpayOrderId: rzpOrder.id,
+        amountPaise,
+        currency: 'INR',
+        customer: validated.customer,
+        shipping: validated.shipping,
+        items: lineItems,
+        subtotal,
+        shippingFee,
+        total,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       },
-      statusTimestamps: { orderedAt: now },
-      statusHistory: [{
-        to: 'ordered',
-        changedAt: now,
-        changedBy: 'System',
-        note: 'Order created — awaiting Razorpay payment',
-      }],
-      customer: validated.customer,
-      shipping: validated.shipping,
-      items: lineItems,
-      currency: 'INR',
-      subtotal,
-      shippingFee,
-      total,
-    });
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
     res.status(201).json({
       ok: true,
       keyId: getRazorpayKeyId(),
       amount: amountPaise,
       currency: 'INR',
-      orderId: order.orderId,
+      orderId,
       razorpayOrderId: rzpOrder.id,
-      order: publicOrder(order),
     });
   } catch (err) {
     const status = err.status || 500;
@@ -613,15 +847,15 @@ app.post('/api/payments/razorpay/verify', async (req, res) => {
       return res.status(400).json({ error: 'Missing payment verification fields' });
     }
 
-    const order = await Order.findOne({ orderId });
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-
-    if (order.razorpayOrderId && order.razorpayOrderId !== razorpayOrderId) {
-      return res.status(400).json({ error: 'Razorpay order mismatch' });
-    }
-
-    if (order.paymentStatus === 'paid') {
-      return res.json({ ok: true, order: publicOrder(order) });
+    // Already placed (retry / double callback)
+    const existingPaid = await Order.findOne({
+      $or: [
+        { orderId, paymentStatus: 'paid' },
+        { razorpayPaymentId, paymentStatus: 'paid' },
+      ],
+    });
+    if (existingPaid) {
+      return res.json({ ok: true, order: publicOrder(existingPaid) });
     }
 
     const valid = verifyRazorpaySignature({
@@ -630,19 +864,23 @@ app.post('/api/payments/razorpay/verify', async (req, res) => {
       razorpaySignature,
     });
     if (!valid) {
-      order.paymentStatus = 'failed';
-      order.paymentMeta = {
-        ...(order.paymentMeta || {}),
-        lastError: 'Invalid payment signature',
-      };
-      await order.save();
       return res.status(400).json({ error: 'Payment verification failed' });
+    }
+
+    const draft = await PendingCheckout.findOne({ orderId, razorpayOrderId });
+    if (!draft) {
+      return res.status(404).json({
+        error: 'Checkout session expired or not found. If money was deducted, contact support with your payment ID.',
+      });
     }
 
     let method = 'razorpay';
     let paymentDetails = {};
     try {
       const payment = await getRazorpayClient().payments.fetch(razorpayPaymentId);
+      if (payment.status && !['authorized', 'captured'].includes(payment.status)) {
+        return res.status(400).json({ error: `Payment not successful (${payment.status})` });
+      }
       method = mapRazorpayMethod(payment.method);
       paymentDetails = {
         method: payment.method,
@@ -659,36 +897,52 @@ app.post('/api/payments/razorpay/verify', async (req, res) => {
     }
 
     const now = new Date();
-    order.paymentStatus = 'paid';
-    order.paymentMethod = method;
-    order.razorpayPaymentId = razorpayPaymentId;
-    order.razorpayOrderId = razorpayOrderId;
-    order.paymentMeta = {
-      ...(order.paymentMeta || {}),
-      gateway: 'razorpay',
+    const order = await Order.create({
+      orderId: draft.orderId,
+      status: 'ordered',
+      paymentStatus: 'paid',
+      paymentMethod: method,
       razorpayOrderId,
       razorpayPaymentId,
-      razorpaySignature,
-      ...paymentDetails,
-      paidAt: now.toISOString(),
-    };
-    order.statusTimestamps = {
-      ...(order.statusTimestamps || {}),
-      orderedAt: order.statusTimestamps?.orderedAt || now,
-      paidAt: now,
-      confirmedAt: now,
-    };
-    order.statusHistory.push({
-      from: order.status,
-      to: order.status,
-      changedAt: now,
-      changedBy: 'System',
-      note: `Payment verified via Razorpay (${razorpayPaymentId})`,
+      paymentMeta: {
+        gateway: 'razorpay',
+        razorpayOrderId,
+        razorpayPaymentId,
+        razorpaySignature,
+        ...paymentDetails,
+        paidAt: now.toISOString(),
+      },
+      statusTimestamps: {
+        orderedAt: now,
+        paidAt: now,
+        confirmedAt: now,
+      },
+      statusHistory: [
+        {
+          to: 'ordered',
+          changedAt: now,
+          changedBy: 'System',
+          note: `Order placed after Razorpay payment (${razorpayPaymentId})`,
+        },
+      ],
+      customer: draft.customer,
+      shipping: draft.shipping,
+      items: draft.items,
+      currency: draft.currency || 'INR',
+      subtotal: draft.subtotal,
+      shippingFee: draft.shippingFee || 0,
+      total: draft.total,
     });
-    await order.save();
 
-    res.json({ ok: true, order: publicOrder(order) });
+    await PendingCheckout.deleteOne({ _id: draft._id });
+
+    res.status(201).json({ ok: true, order: publicOrder(order) });
   } catch (err) {
+    // Unique orderId race on double-submit
+    if (err?.code === 11000) {
+      const again = await Order.findOne({ orderId: req.body?.orderId, paymentStatus: 'paid' });
+      if (again) return res.json({ ok: true, order: publicOrder(again) });
+    }
     console.error('Razorpay verify error:', err);
     res.status(500).json({ error: err.message || 'Payment verification failed' });
   }
@@ -703,7 +957,12 @@ app.post('/api/orders', async (_req, res) => {
 
 app.get('/api/orders/my-orders', protect, async (req, res) => {
   try {
-    const orders = await Order.find({ 'customer.email': req.user.email }).sort({ createdAt: -1 }).lean();
+    const orders = await Order.find({
+      'customer.email': req.user.email,
+      paymentStatus: 'paid',
+    })
+      .sort({ createdAt: -1 })
+      .lean();
     res.json({ orders });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -712,7 +971,7 @@ app.get('/api/orders/my-orders', protect, async (req, res) => {
 
 app.get('/api/orders/:id', async (req, res) => {
   try {
-    const order = await Order.findOne({ orderId: req.params.id }).lean();
+    const order = await Order.findOne({ orderId: req.params.id, paymentStatus: 'paid' }).lean();
     if (!order) return res.status(404).json({ error: 'Order not found' });
     res.json(publicOrder(order));
   } catch (err) {
@@ -723,7 +982,10 @@ app.get('/api/orders/:id', async (req, res) => {
 // ─── Admin APIs ────────────────────────────────────────────────────────────────
 app.get('/api/admin/orders', protect, admin, async (req, res) => {
   try {
-    const orders = await Order.find().sort({ createdAt: -1 }).lean();
+    // Remove abandoned pre-payment drafts from older flow (never fulfill unpaid)
+    await Order.deleteMany({ paymentStatus: { $in: ['pending', 'failed'] } });
+
+    const orders = await Order.find({ paymentStatus: 'paid' }).sort({ createdAt: -1 }).lean();
     res.json({ orders });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -986,7 +1248,10 @@ app.get('/api/admin/reports/overview', protect, admin, async (req, res) => {
     start.setDate(start.getDate() - (days - 1));
     start.setHours(0, 0, 0, 0);
 
-    const orders = await Order.find({ createdAt: { $gte: start, $lte: end } })
+    const orders = await Order.find({
+      createdAt: { $gte: start, $lte: end },
+      paymentStatus: 'paid',
+    })
       .sort({ createdAt: 1 })
       .lean();
 
@@ -1243,7 +1508,7 @@ app.delete('/api/admin/products/:id', protect, admin, async (req, res) => {
 
 app.get('/api/admin/customers', protect, admin, async (req, res) => {
   try {
-    const orders = await Order.find().lean();
+    const orders = await Order.find({ paymentStatus: 'paid' }).lean();
     const customersMap = {};
     
     orders.forEach(order => {

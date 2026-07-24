@@ -59,6 +59,7 @@ export default function App() {
   const isAdmin = pathname.startsWith('/admin');
   const isAdminLogin = pathname === '/login' && searchParams.get('redirect') === 'admin';
   const isProductDetail = /^\/shop\/[^/]+/.test(pathname);
+  const isCheckout = pathname.startsWith('/checkout');
   const hideVideo =
     pathname.startsWith('/checkout') ||
     pathname.startsWith('/order') ||
@@ -126,10 +127,10 @@ export default function App() {
   return (
     <>
       <ScrollLock />
-      <ScrollProgress />
-      <AnnouncementBar />
-      <WhatsAppStatusBar />
-      <Navbar />
+      {!isCheckout && <ScrollProgress />}
+      {!isCheckout && <AnnouncementBar />}
+      {!isCheckout && <WhatsAppStatusBar />}
+      {!isCheckout && <Navbar />}
       <PageShell>
         <Routes>
           <Route path="/" element={<Home />} />
@@ -144,8 +145,8 @@ export default function App() {
           <Route path="/policies/:slug" element={<Policy />} />
         </Routes>
       </PageShell>
-      <Footer />
-      <FloatDock showVideo={!hideVideo} />
+      {!isCheckout && <Footer />}
+      {!isCheckout && <FloatDock showVideo={!hideVideo} />}
     </>
   );
 }

@@ -51,6 +51,36 @@ export const api = {
     return res.data;
   },
 
+  async phoneCheck(phone) {
+    const res = await client.post('/auth/phone/check', { phone });
+    return res.data;
+  },
+
+  async phoneContinue({ phone, name }) {
+    const res = await client.post('/auth/phone/continue', { phone, name });
+    return res.data;
+  },
+
+  async getAddresses() {
+    const res = await client.get('/auth/addresses');
+    return res.data;
+  },
+
+  async addAddress(payload) {
+    const res = await client.post('/auth/addresses', payload);
+    return res.data;
+  },
+
+  async deleteAddress(id) {
+    const res = await client.delete(`/auth/addresses/${id}`);
+    return res.data;
+  },
+
+  async getMe() {
+    const res = await client.get('/auth/me');
+    return res.data;
+  },
+
   async getOrder(id) {
     const res = await client.get(`/orders/${id}`);
     return res.data;

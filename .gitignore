@@ -7,6 +7,18 @@ client/dist/
 client/.tmp-build-check/
 .DS_Store
 *.log
+
+# Secrets — never commit
 .env
 .env.local
+server/.env
+client/.env
+
+# Keep deploy templates public
+!.env.example
+!client/.env.example
+!server/.env.example
+!.env.production
+!client/.env.production
+
 .tmp-mkt.css

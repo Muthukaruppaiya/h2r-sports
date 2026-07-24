@@ -32,7 +32,9 @@ npm run dev
 
 # Client (separate terminal)
 cd client
-cp .env.example .env   # defaults to http://localhost:5000/api
+cp .env.example .env
+# For local API: set VITE_API_URL=http://localhost:5000/api in client/.env
+# Default example points at Render for production-parity testing
 npm install
 npm run dev
 ```
