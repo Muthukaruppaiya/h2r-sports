@@ -12,6 +12,7 @@ import Product from './models/Product.js';
 import Order from './models/Order.js';
 import Review from './models/Review.js';
 import User from './models/User.js';
+import Notification from './models/Notification.js';
 import MarketingSettings from './models/MarketingSettings.js';
 import Media from './models/Media.js';
 import StoreBill from './models/StoreBill.js';
@@ -223,6 +224,19 @@ const statusMediaUpload = multer({
   },
 });
 
+const MAX_REVIEW_MEDIA_FILES = 4;
+const MAX_REVIEW_MEDIA_BYTES = 25 * 1024 * 1024;
+
+/** Customer review photos/clips — public upload, kept smaller than admin marketing uploads */
+const reviewMediaUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_REVIEW_MEDIA_BYTES, files: MAX_REVIEW_MEDIA_FILES },
+  fileFilter: (_req, file, cb) => {
+    if (isAllowedStatusMedia(file)) return cb(null, true);
+    cb(new Error('Only photo or video files are allowed.'));
+  },
+});
+
 function detectMediaType(file) {
   if (!file) return null;
   const name = String(file.originalname || '');
@@ -242,14 +256,14 @@ function guessVideoContentType(file) {
   return 'video/mp4';
 }
 
-function uploadErrorMessage(err, fallback) {
+function uploadErrorMessage(err, fallback, maxBytes = MAX_VIDEO_BYTES) {
   if (!err) return fallback;
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return `File is too large. Max ${Math.round(MAX_VIDEO_BYTES / (1024 * 1024))}MB. Compress the video and try again.`;
+      return `File is too large. Max ${Math.round(maxBytes / (1024 * 1024))}MB. Compress it and try again.`;
     }
-    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
-      return 'Unexpected upload field. Please try again.';
+    if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
+      return `You can upload up to ${MAX_REVIEW_MEDIA_FILES} photos/clips.`;
     }
     return err.message || fallback;
   }
@@ -749,13 +763,280 @@ app.get('/api/products/:id', async (req, res) => {
 });
 
 // ─── Reviews ──────────────────────────────────────────────────────────────────
+function sanitizeReviewMedia(input) {
+  if (!Array.isArray(input)) return [];
+  return input
+    .slice(0, MAX_REVIEW_MEDIA_FILES)
+    .map((m) => ({
+      url: String(m?.url || '').trim(),
+      type: m?.type === 'video' ? 'video' : 'image',
+    }))
+    .filter((m) => m.url);
+}
+
+function publicReview(doc) {
+  const r = doc?.toObject ? doc.toObject() : doc;
+  if (!r) return null;
+  return {
+    id: String(r._id),
+    name: r.name,
+    text: r.text,
+    rating: r.rating,
+    location: r.location || '',
+    image: r.image || '',
+    media: Array.isArray(r.media) ? r.media.map((m) => ({ url: m.url, type: m.type || 'image' })) : [],
+    productId: r.productId || '',
+    productName: r.productName || '',
+    status: r.status || 'approved',
+    featured: !!r.featured,
+    sortOrder: Number(r.sortOrder) || 0,
+    source: r.source || 'admin',
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+  };
+}
+
+/** Public storefront — approved reviews only */
 app.get('/api/reviews', async (_req, res) => {
   try {
-    const reviews = (await Review.find().sort({ createdAt: -1 }).lean()).map((r) => ({
-      ...r,
-      id: r.id || String(r._id),
-    }));
-    res.json({ reviews });
+    const reviews = await Review.find({
+      $or: [{ status: 'approved' }, { status: { $exists: false } }, { status: null }],
+    })
+      .sort({ featured: -1, sortOrder: 1, createdAt: -1 })
+      .lean();
+    res.json({ reviews: reviews.map(publicReview) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Customer uploads photos/short clips for their review before submitting.
+ * Public endpoint (no auth) — limited to a few small files to prevent abuse.
+ */
+app.post('/api/reviews/upload-media', (req, res) => {
+  reviewMediaUpload.array('media', MAX_REVIEW_MEDIA_FILES)(req, res, async (err) => {
+    if (err) {
+      console.error('Review media upload error:', err);
+      return res.status(400).json({ error: uploadErrorMessage(err, 'Upload failed', MAX_REVIEW_MEDIA_BYTES) });
+    }
+    try {
+      const files = req.files || [];
+      if (!files.length) return res.status(400).json({ error: 'No photo or video selected' });
+
+      const media = [];
+      for (const file of files) {
+        const mediaType = detectMediaType(file);
+        if (!mediaType) continue;
+        const contentType =
+          mediaType === 'video' ? guessVideoContentType(file) : file.mimetype || 'image/jpeg';
+
+        if (mediaType === 'image' && file.buffer.length <= 8 * 1024 * 1024) {
+          const doc = await Media.create({
+            filename: file.originalname || 'review.jpg',
+            contentType,
+            size: file.buffer.length,
+            data: file.buffer,
+          });
+          media.push({ url: `/api/media/${doc._id}`, type: mediaType });
+          continue;
+        }
+
+        const stored = await storeBufferInGridFS(file.buffer, {
+          filename: file.originalname || `review-${Date.now()}`,
+          contentType,
+        });
+        media.push({ url: stored.url, type: mediaType });
+      }
+
+      if (!media.length) return res.status(400).json({ error: 'Unsupported file type' });
+      res.json({ ok: true, media });
+    } catch (e) {
+      console.error('Review media store error:', e);
+      res.status(500).json({ error: e.message || 'Upload failed' });
+    }
+  });
+});
+
+/**
+ * Customer submits a bat review → lands in admin as pending.
+ * Admin must approve ("post on website") before it appears in the home marquee.
+ */
+app.post('/api/reviews', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const name = String(body.name || '').trim();
+    const text = String(body.text || '').trim();
+    const productId = String(body.productId || '').trim();
+    const productName = String(body.productName || '').trim();
+    const location = String(body.location || '').trim();
+    const rating = Math.min(5, Math.max(1, Number(body.rating) || 5));
+    const media = sanitizeReviewMedia(body.media);
+
+    if (name.length < 2) {
+      return res.status(400).json({ error: 'Enter your name' });
+    }
+    if (text.length < 10) {
+      return res.status(400).json({ error: 'Write a short review (at least 10 characters)' });
+    }
+    if (!productId && !productName) {
+      return res.status(400).json({ error: 'Product is required' });
+    }
+
+    // Light spam guard: same name + product within 10 minutes
+    const recent = await Review.findOne({
+      name,
+      productId: productId || '',
+      source: 'customer',
+      createdAt: { $gte: new Date(Date.now() - 10 * 60 * 1000) },
+    }).lean();
+    if (recent) {
+      return res.status(429).json({
+        error: 'You already sent a review for this bat. Please wait a few minutes.',
+      });
+    }
+
+    const review = await Review.create({
+      name,
+      text,
+      rating,
+      location,
+      media,
+      productId,
+      productName: productName || productId,
+      status: 'pending',
+      featured: false,
+      sortOrder: 0,
+      source: 'customer',
+    });
+
+    res.status(201).json({
+      ok: true,
+      message: 'Thanks! Your review was sent for approval. It will appear on the site after H2R posts it.',
+      review: publicReview(review),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Admin — full review management */
+app.get('/api/admin/reviews', protect, admin, async (req, res) => {
+  try {
+    const status = String(req.query.status || '').trim();
+    const filter = {};
+    if (status && ['pending', 'approved', 'hidden'].includes(status)) {
+      filter.status = status;
+    }
+    const reviews = await Review.find(filter).sort({ createdAt: -1 }).lean();
+    res.json({ reviews: reviews.map(publicReview) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/reviews', protect, admin, async (req, res) => {
+  try {
+    const body = req.body || {};
+    const name = String(body.name || '').trim();
+    const text = String(body.text || '').trim();
+    if (!name || !text) {
+      return res.status(400).json({ error: 'Name and review text are required' });
+    }
+    const rating = Math.min(5, Math.max(1, Number(body.rating) || 5));
+    const review = await Review.create({
+      name,
+      text,
+      rating,
+      location: String(body.location || '').trim(),
+      image: String(body.image || '').trim(),
+      media: sanitizeReviewMedia(body.media),
+      productId: String(body.productId || '').trim(),
+      productName: String(body.productName || '').trim(),
+      status: ['pending', 'approved', 'hidden'].includes(body.status) ? body.status : 'approved',
+      featured: !!body.featured,
+      sortOrder: Number(body.sortOrder) || 0,
+      source: 'admin',
+    });
+    res.status(201).json({ review: publicReview(review) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/reviews/:id', protect, admin, async (req, res) => {
+  try {
+    const review = await Review.findById(req.params.id);
+    if (!review) return res.status(404).json({ error: 'Review not found' });
+
+    const body = req.body || {};
+    if (body.name != null) review.name = String(body.name).trim();
+    if (body.text != null) review.text = String(body.text).trim();
+    if (body.rating != null) review.rating = Math.min(5, Math.max(1, Number(body.rating) || 5));
+    if (body.location != null) review.location = String(body.location).trim();
+    if (body.image != null) review.image = String(body.image).trim();
+    if (body.media != null) review.media = sanitizeReviewMedia(body.media);
+    if (body.productId != null) review.productId = String(body.productId).trim();
+    if (body.productName != null) review.productName = String(body.productName).trim();
+    if (body.status != null && ['pending', 'approved', 'hidden'].includes(body.status)) {
+      review.status = body.status;
+    }
+    if (body.featured != null) review.featured = !!body.featured;
+    if (body.sortOrder != null) review.sortOrder = Number(body.sortOrder) || 0;
+
+    if (!review.name || !review.text) {
+      return res.status(400).json({ error: 'Name and review text are required' });
+    }
+
+    await review.save();
+    res.json({ review: publicReview(review) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/reviews/:id', protect, admin, async (req, res) => {
+  try {
+    const review = await Review.findByIdAndDelete(req.params.id);
+    if (!review) return res.status(404).json({ error: 'Review not found' });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+app.get('/api/admin/notifications', protect, admin, async (req, res) => {
+  try {
+    const limit = Math.min(100, Number(req.query.limit) || 30);
+    const [notifications, unreadCount] = await Promise.all([
+      Notification.find({}).sort({ createdAt: -1 }).limit(limit).lean(),
+      Notification.countDocuments({ read: false }),
+    ]);
+    res.json({ notifications, unreadCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/notifications/read-all', protect, admin, async (_req, res) => {
+  try {
+    await Notification.updateMany({ read: false }, { $set: { read: true } });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/notifications/:id/read', protect, admin, async (req, res) => {
+  try {
+    const notification = await Notification.findByIdAndUpdate(
+      req.params.id,
+      { $set: { read: true } },
+      { new: true }
+    );
+    if (!notification) return res.status(404).json({ error: 'Notification not found' });
+    res.json({ notification });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -936,6 +1217,29 @@ app.post('/api/payments/razorpay/verify', async (req, res) => {
 
     await PendingCheckout.deleteOne({ _id: draft._id });
 
+    // Best-effort admin alert — never let a notification failure block checkout.
+    try {
+      const place = [draft.shipping?.city, draft.shipping?.state].filter(Boolean).join(', ');
+      await Notification.create({
+        type: 'order',
+        title: 'New order placed',
+        message: `${draft.customer?.name || 'A customer'} placed an order${
+          place ? ` from ${place}` : ''
+        } — ${order.currency || 'INR'} ${Number(order.total || 0).toLocaleString('en-IN')}`,
+        orderId: order.orderId,
+        meta: {
+          customerName: draft.customer?.name || '',
+          customerPhone: draft.customer?.phone || '',
+          city: draft.shipping?.city || '',
+          state: draft.shipping?.state || '',
+          total: order.total,
+          paymentMethod: order.paymentMethod,
+        },
+      });
+    } catch (notifyErr) {
+      console.warn('Order notification skipped:', notifyErr.message);
+    }
+
     res.status(201).json({ ok: true, order: publicOrder(order) });
   } catch (err) {
     // Unique orderId race on double-submit
@@ -1035,6 +1339,7 @@ app.get('/api/marketing/public', async (_req, res) => {
       settings = await MarketingSettings.create({
         key: 'default',
         floatingVideos: [],
+        showcaseVideos: [],
         whatsappStatuses: [],
       });
       settings = settings.toObject();
@@ -1042,6 +1347,11 @@ app.get('/api/marketing/public', async (_req, res) => {
 
     const now = new Date();
     const floatingVideos = (settings.floatingVideos || [])
+      .filter((v) => v.active !== false)
+      .map(formatFloatingVideo)
+      .filter(Boolean)
+      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+    const showcaseVideos = (settings.showcaseVideos || [])
       .filter((v) => v.active !== false)
       .map(formatFloatingVideo)
       .filter(Boolean)
@@ -1063,7 +1373,7 @@ app.get('/api/marketing/public', async (_req, res) => {
       }))
       .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
 
-    res.json({ floatingVideos, whatsappStatuses });
+    res.json({ floatingVideos, showcaseVideos, whatsappStatuses });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1154,43 +1464,52 @@ app.post('/api/admin/marketing/upload-status-media', protect, admin, (req, res) 
   });
 });
 
+/** Shared sanitizer for both the floating-bubble videos and the homepage showcase videos */
+function sanitizeVideoEntries(list, { idPrefix = 'video' } = {}) {
+  const sanitized = [];
+  for (const [idx, v] of list.entries()) {
+    const videoUrl = String(v.videoUrl || '').trim();
+    const title = String(v.title || '').trim();
+    if (!videoUrl && !title) continue;
+    if (!videoUrl) {
+      return { error: `Upload a video file for "${title || `video ${idx + 1}`}" (required for autoplay).` };
+    }
+    let instagramUrl = '';
+    if (v.instagramUrl) {
+      const parsed = parseInstagramUrl(v.instagramUrl);
+      if (!parsed) {
+        return { error: `Invalid Instagram URL for "${title || `video ${idx + 1}`}".` };
+      }
+      instagramUrl = parsed.permalink;
+    }
+    sanitized.push({
+      id: v.id || `${idPrefix}-${Date.now()}-${idx}`,
+      title: title || 'Marketing Video',
+      videoUrl,
+      instagramUrl,
+      productPath: String(v.productPath || '/shop').trim(),
+      productName: String(v.productName || 'Shop now').trim(),
+      productId: String(v.productId || '').trim(),
+      active: v.active !== false,
+      sortOrder: Number(v.sortOrder) || idx + 1,
+    });
+  }
+  return { sanitized };
+}
+
 app.put('/api/admin/marketing', protect, admin, async (req, res) => {
   try {
     const floatingVideos = Array.isArray(req.body.floatingVideos) ? req.body.floatingVideos : [];
+    const showcaseVideos = Array.isArray(req.body.showcaseVideos) ? req.body.showcaseVideos : [];
     const whatsappStatuses = Array.isArray(req.body.whatsappStatuses) ? req.body.whatsappStatuses : [];
 
-    const sanitizedVideos = [];
-    for (const [idx, v] of floatingVideos.entries()) {
-      const videoUrl = String(v.videoUrl || '').trim();
-      const title = String(v.title || '').trim();
-      if (!videoUrl && !title) continue;
-      if (!videoUrl) {
-        return res.status(400).json({
-          error: `Upload a video file for "${title || `video ${idx + 1}`}" (required for autoplay).`,
-        });
-      }
-      let instagramUrl = '';
-      if (v.instagramUrl) {
-        const parsed = parseInstagramUrl(v.instagramUrl);
-        if (!parsed) {
-          return res.status(400).json({
-            error: `Invalid Instagram URL for "${title || `video ${idx + 1}`}".`,
-          });
-        }
-        instagramUrl = parsed.permalink;
-      }
-      sanitizedVideos.push({
-        id: v.id || `video-${Date.now()}-${idx}`,
-        title: title || 'Marketing Video',
-        videoUrl,
-        instagramUrl,
-        productPath: String(v.productPath || '/shop').trim(),
-        productName: String(v.productName || 'Shop now').trim(),
-        productId: String(v.productId || '').trim(),
-        active: v.active !== false,
-        sortOrder: Number(v.sortOrder) || idx + 1,
-      });
-    }
+    const floatingResult = sanitizeVideoEntries(floatingVideos, { idPrefix: 'video' });
+    if (floatingResult.error) return res.status(400).json({ error: floatingResult.error });
+    const sanitizedVideos = floatingResult.sanitized;
+
+    const showcaseResult = sanitizeVideoEntries(showcaseVideos, { idPrefix: 'showcase' });
+    if (showcaseResult.error) return res.status(400).json({ error: showcaseResult.error });
+    const sanitizedShowcaseVideos = showcaseResult.sanitized;
 
     const existing = await MarketingSettings.findOne({ key: 'default' }).lean();
     const existingById = new Map((existing?.whatsappStatuses || []).map((s) => [s.id, s]));
@@ -1228,7 +1547,11 @@ app.put('/api/admin/marketing', protect, admin, async (req, res) => {
 
     const updated = await MarketingSettings.findOneAndUpdate(
       { key: 'default' },
-      { floatingVideos: sanitizedVideos, whatsappStatuses: sanitizedStatuses },
+      {
+        floatingVideos: sanitizedVideos,
+        showcaseVideos: sanitizedShowcaseVideos,
+        whatsappStatuses: sanitizedStatuses,
+      },
       { new: true, upsert: true }
     ).lean();
 

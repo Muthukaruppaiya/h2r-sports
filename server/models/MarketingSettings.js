@@ -36,7 +36,10 @@ const WhatsappStatusSchema = new mongoose.Schema(
 const MarketingSettingsSchema = new mongoose.Schema(
   {
     key: { type: String, required: true, unique: true, default: 'default' },
+    /** Draggable mini video bubble shown on every storefront page */
     floatingVideos: { type: [MarketingVideoSchema], default: [] },
+    /** "See H2R In Action" carousel section on the homepage — managed separately */
+    showcaseVideos: { type: [MarketingVideoSchema], default: [] },
     whatsappStatuses: { type: [WhatsappStatusSchema], default: [] },
   },
   { timestamps: true }

@@ -4,6 +4,8 @@ import { formatINR, INDIA, BRAND } from '../utils/india';
 import { buildWhatsAppOrderUrl } from '../utils/whatsapp';
 import { setBuyNowItem } from '../utils/checkoutItem';
 import ProductGallery from '../components/ProductGallery';
+import WriteReview from '../components/WriteReview';
+import RevealOnScroll from '../components/RevealOnScroll';
 import { api } from '../api/store';
 
 export default function ProductDetail() {
@@ -135,7 +137,7 @@ export default function ProductDetail() {
           />
         </div>
 
-        <div className="pdp__info">
+        <RevealOnScroll as="div" className="pdp__info" variant="fast">
           <Link to={`/collections/${product.collection}`} className="pdp__crumb">
             ← {product.category}
           </Link>
@@ -245,8 +247,12 @@ export default function ProductDetail() {
               ))}
             </ul>
           )}
-        </div>
+        </RevealOnScroll>
       </div>
+
+      <RevealOnScroll as="div" className="container pdp__review-wrap">
+        <WriteReview productId={product.id} productName={product.name} />
+      </RevealOnScroll>
 
       <div className="pdp-sticky" aria-label="Quick buy">
         <div className="pdp-sticky__price">
@@ -256,34 +262,11 @@ export default function ProductDetail() {
             {weight?.label ? ` · ${weight.label}` : ''}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', flex: 1 }}>
-          <button
-            type="button"
-            className="btn btn--primary"
-            onClick={buyNow}
-            style={{ flex: 1, fontSize: '0.8rem', padding: '10px 8px' }}
-          >
+        <div className="pdp-sticky__actions">
+          <button type="button" className="btn btn--primary pdp-sticky__buy" onClick={buyNow}>
             Buy Now
           </button>
-          <button
-            type="button"
-            onClick={buyWhatsApp}
-            style={{
-              flex: 1,
-              fontSize: '0.8rem',
-              padding: '10px 8px',
-              background: '#25D366',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontWeight: '700',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '4px',
-            }}
-          >
+          <button type="button" className="pdp-sticky__whatsapp" onClick={buyWhatsApp}>
             WhatsApp
           </button>
         </div>

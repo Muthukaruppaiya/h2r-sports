@@ -20,6 +20,15 @@ export default function Login() {
 
     try {
       const res = await api.post('/auth/login', { email, password });
+
+      // Admin login must only persist a session when the account is actually an admin —
+      // otherwise a customer account stayed "logged in" in the background while this
+      // page showed an access-denied error.
+      if (redirect === 'admin' && res.data.role !== 'admin') {
+        setError('This account does not have admin access.');
+        return;
+      }
+
       localStorage.setItem('h2r_token', res.data.token);
       localStorage.setItem('h2r_user', JSON.stringify(res.data));
 
@@ -27,13 +36,11 @@ export default function Login() {
         navigate('/admin');
       } else if (redirect === 'checkout') {
         navigate('/checkout');
-      } else if (redirect === 'admin') {
-        setError('This account does not have admin access.');
       } else {
         navigate('/my-orders');
       }
     } catch (err) {
-      setError('Invalid email or password');
+      setError(err.response?.data?.error || 'Invalid email or password');
     } finally {
       setLoading(false);
     }

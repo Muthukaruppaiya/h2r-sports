@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import {
   getStatusLabel,
@@ -120,6 +121,7 @@ function printAddressLabels(orders) {
 }
 
 export default function Orders() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -139,6 +141,19 @@ export default function Orders() {
   useEffect(() => {
     fetchOrders();
   }, []);
+
+  // Deep-link from notification bell: /admin/orders?highlight=<orderId>
+  useEffect(() => {
+    const highlight = searchParams.get('highlight');
+    if (!highlight || orders.length === 0) return;
+    const match = orders.find((o) => o.orderId === highlight);
+    if (match) {
+      setSelectedOrder(match);
+      const next = new URLSearchParams(searchParams);
+      next.delete('highlight');
+      setSearchParams(next, { replace: true });
+    }
+  }, [orders, searchParams]);
 
   useEffect(() => {
     if (!toast) return undefined;

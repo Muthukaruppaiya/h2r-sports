@@ -36,6 +36,18 @@ export const api = {
     return res.data;
   },
 
+  async submitReview(payload) {
+    const res = await client.post('/reviews', payload);
+    return res.data;
+  },
+
+  async uploadReviewMedia(files) {
+    const formData = new FormData();
+    files.forEach((file) => formData.append('media', file));
+    const res = await client.post('/reviews/upload-media', formData);
+    return res.data;
+  },
+
   async createOrder(payload) {
     const res = await client.post('/orders', payload);
     return res.data;

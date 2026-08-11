@@ -1,11 +1,40 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
-function ReviewCard({ review }) {
+function getReviewMedia(review) {
+  if (Array.isArray(review?.media) && review.media.length) {
+    return review.media.filter((m) => m?.url);
+  }
+  if (review?.image) return [{ url: review.image, type: 'image' }];
+  return [];
+}
+
+function ReviewCard({ review, onOpen }) {
+  const media = getReviewMedia(review);
+  const thumb = media[0];
+
   return (
-    <blockquote className="review-card review-card--marquee">
-      {review.image ? (
+    <blockquote
+      className="review-card review-card--marquee"
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(review)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen(review);
+        }
+      }}
+      aria-label={`Read full review from ${review.name}`}
+    >
+      {thumb ? (
         <div className="review-card__photo">
-          <img src={review.image} alt="" loading="lazy" />
+          {thumb.type === 'video' ? (
+            <video src={thumb.url} muted playsInline preload="metadata" />
+          ) : (
+            <img src={thumb.url} alt="" loading="lazy" />
+          )}
+          {thumb.type === 'video' ? <span className="review-card__play">▶</span> : null}
+          {media.length > 1 ? <span className="review-card__count">+{media.length - 1}</span> : null}
         </div>
       ) : null}
       <div className="review-card__body">
@@ -13,13 +42,105 @@ function ReviewCard({ review }) {
           {'★'.repeat(Math.min(5, Math.max(1, Number(review.rating) || 5)))}
         </div>
         <p>“{review.text}”</p>
-        <cite>{review.name}</cite>
+        <cite>
+          {review.name}
+          {review.location ? ` · ${review.location}` : ''}
+        </cite>
       </div>
     </blockquote>
   );
 }
 
-function MarqueeRow({ reviews, direction }) {
+function ReviewModal({ review, onClose }) {
+  const [slide, setSlide] = useState(0);
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [onClose]);
+
+  if (!review) return null;
+  const media = getReviewMedia(review);
+
+  return (
+    <div className="review-modal" role="dialog" aria-modal="true" aria-label={`Review from ${review.name}`}>
+      <button type="button" className="review-modal__backdrop" aria-label="Close review" onClick={onClose} />
+      <div className="review-modal__panel">
+        <button type="button" className="review-modal__close" aria-label="Close review" onClick={onClose}>
+          ×
+        </button>
+        {media.length ? (
+          <div className="review-modal__gallery">
+            <div
+              className="review-modal__slides"
+              style={{ transform: `translateX(-${slide * 100}%)` }}
+            >
+              {media.map((m, i) =>
+                m.type === 'video' ? (
+                  <video key={`${m.url}-${i}`} src={m.url} controls playsInline className="review-modal__slide" />
+                ) : (
+                  <img key={`${m.url}-${i}`} src={m.url} alt="" loading="lazy" className="review-modal__slide" />
+                )
+              )}
+            </div>
+            {media.length > 1 ? (
+              <>
+                <button
+                  type="button"
+                  className="review-modal__nav review-modal__nav--prev"
+                  aria-label="Previous"
+                  onClick={() => setSlide((s) => (s - 1 + media.length) % media.length)}
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  className="review-modal__nav review-modal__nav--next"
+                  aria-label="Next"
+                  onClick={() => setSlide((s) => (s + 1) % media.length)}
+                >
+                  ›
+                </button>
+                <div className="review-modal__dots">
+                  {media.map((_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className={`review-modal__dot${i === slide ? ' is-active' : ''}`}
+                      aria-label={`Go to media ${i + 1}`}
+                      onClick={() => setSlide(i)}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="review-modal__body">
+          <div className="review-modal__stars" aria-hidden="true">
+            {'★'.repeat(Math.min(5, Math.max(1, Number(review.rating) || 5)))}
+          </div>
+          <p className="review-modal__text">“{review.text}”</p>
+          <cite className="review-modal__cite">
+            {review.name}
+            {review.location ? ` · ${review.location}` : ''}
+          </cite>
+          {review.productName ? (
+            <span className="review-modal__product">On {review.productName}</span>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MarqueeRow({ reviews, direction, onOpen }) {
   const scrollerRef = useRef(null);
   const rafRef = useRef(0);
   const pausedRef = useRef(false);
@@ -83,7 +204,7 @@ function MarqueeRow({ reviews, direction }) {
     >
       <div className="reviews-marquee__track">
         {loop.map((r, i) => (
-          <ReviewCard key={`${r._id || r.id || r.name}-${direction}-${i}`} review={r} />
+          <ReviewCard key={`${r._id || r.id || r.name}-${direction}-${i}`} review={r} onOpen={onOpen} />
         ))}
       </div>
     </div>
@@ -91,6 +212,8 @@ function MarqueeRow({ reviews, direction }) {
 }
 
 export default function Reviews({ reviews, loading = false }) {
+  const [activeReview, setActiveReview] = useState(null);
+
   if (loading) {
     return (
       <section className="reviews" aria-label="Customer reviews">
@@ -126,9 +249,12 @@ export default function Reviews({ reviews, loading = false }) {
         <p className="reviews__hint">Swipe to browse · auto-scrolls both ways</p>
       </div>
       <div className="reviews-marquee-wrap">
-        <MarqueeRow reviews={rowLeft} direction="ltr" />
-        <MarqueeRow reviews={rowRight} direction="rtl" />
+        <MarqueeRow reviews={rowLeft} direction="ltr" onOpen={setActiveReview} />
+        <MarqueeRow reviews={rowRight} direction="rtl" onOpen={setActiveReview} />
       </div>
+      {activeReview ? (
+        <ReviewModal review={activeReview} onClose={() => setActiveReview(null)} />
+      ) : null}
     </section>
   );
 }

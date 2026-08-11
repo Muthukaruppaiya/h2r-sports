@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { BRAND } from '../../utils/india';
+import api from '../../api/client';
+import NotificationBell from '../../components/NotificationBell';
 
 const ICONS = {
   home: (
@@ -105,7 +107,9 @@ const NAV = [
     icon: 'marketing',
     children: [
       { label: 'Floating Video', to: '/admin/marketing?tab=video', tab: 'video' },
+      { label: 'Homepage Showcase', to: '/admin/marketing?tab=showcase', tab: 'showcase' },
       { label: 'WhatsApp Status', to: '/admin/marketing?tab=status', tab: 'status' },
+      { label: 'Reviews', to: '/admin/reviews', badgeKey: 'pendingReviews' },
     ],
   },
   { type: 'link', id: 'reports', label: 'Reports', to: '/admin/reports', icon: 'reports' },
@@ -119,6 +123,7 @@ const PAGE_META = [
   { match: '/admin/inventory', title: 'Items', subtitle: 'Catalogue, categories & collections' },
   { match: '/admin/customers', title: 'Customers', subtitle: 'Buyer directory' },
   { match: '/admin/marketing', title: 'Marketing', subtitle: 'Status rings & floating videos' },
+  { match: '/admin/reviews', title: 'Reviews', subtitle: 'Manage storefront testimonials' },
   { match: '/admin/reports', title: 'Reports', subtitle: 'Sales intelligence' },
   { match: '/admin/integrations', title: 'Integrations', subtitle: 'Connected tools' },
   { match: '/admin', title: 'Dashboard', subtitle: 'Store overview', exact: true },
@@ -166,8 +171,28 @@ export default function AdminLayout() {
   const { pathname, search } = location;
   const searchParams = useMemo(() => new URLSearchParams(search), [search]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [badgeCounts, setBadgeCounts] = useState({ pendingReviews: 0 });
   const page = resolvePageMeta(pathname);
   const user = JSON.parse(localStorage.getItem('h2r_user') || '{}');
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadCounts = async () => {
+      try {
+        const res = await api.get('/admin/reviews?status=pending');
+        if (cancelled) return;
+        setBadgeCounts((prev) => ({ ...prev, pendingReviews: (res.data.reviews || []).length }));
+      } catch {
+        /* badge is a nice-to-have; ignore failures */
+      }
+    };
+    loadCounts();
+    const interval = setInterval(loadCounts, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [pathname]);
 
   const initiallyOpen = useMemo(() => {
     const open = {};
@@ -275,6 +300,10 @@ export default function AdminLayout() {
 
             const open = !!openGroups[item.id];
             const childActive = item.children.some((c) => childIsActive(pathname, searchParams, c));
+            const groupBadge = item.children.reduce(
+              (sum, c) => sum + (c.badgeKey ? badgeCounts[c.badgeKey] || 0 : 0),
+              0
+            );
             return (
               <div key={item.id} className={`zoho-admin__group${open ? ' is-open' : ''}`}>
                 <button
@@ -284,6 +313,11 @@ export default function AdminLayout() {
                 >
                   <span className="zoho-admin__ico">{ICONS[item.icon]}</span>
                   <span className="zoho-admin__group-label">{item.label}</span>
+                  {groupBadge > 0 && !open && (
+                    <span className="zoho-admin__badge" aria-label={`${groupBadge} pending`}>
+                      {groupBadge}
+                    </span>
+                  )}
                   <span className={`zoho-admin__chev${open ? ' is-open' : ''}`}>{ICONS.chevron}</span>
                 </button>
                 {open && (
@@ -309,7 +343,12 @@ export default function AdminLayout() {
                           }
                         >
                           <span className="zoho-admin__sub-dot" aria-hidden="true" />
-                          {child.label}
+                          <span className="zoho-admin__sublink-label">{child.label}</span>
+                          {child.badgeKey && badgeCounts[child.badgeKey] > 0 && (
+                            <span className="zoho-admin__badge" aria-label={`${badgeCounts[child.badgeKey]} pending`}>
+                              {badgeCounts[child.badgeKey]}
+                            </span>
+                          )}
                         </NavLink>
                       )
                     )}
@@ -357,6 +396,7 @@ export default function AdminLayout() {
             <span>{page.subtitle}</span>
           </div>
           <div className="zoho-admin__topbar-actions">
+            <NotificationBell />
             <span className="zoho-admin__user-chip">{user.name || user.email || 'Admin'}</span>
             <button type="button" className="adm-btn adm-btn--ghost" onClick={() => navigate('/')}>
               Store

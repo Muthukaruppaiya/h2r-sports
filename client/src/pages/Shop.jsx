@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
+import RevealOnScroll from '../components/RevealOnScroll';
 import { api } from '../api/store';
 
 const CATEGORIES = ['All', 'Hard Tennis', 'Soft Tennis', 'Season'];
@@ -64,15 +65,15 @@ export default function Shop() {
   return (
     <main className="shop-page">
       <div className="shop-hero">
-        <div className="container">
+        <RevealOnScroll className="container" variant="fast">
           <p className="home-banner__eyebrow">All products</p>
           <h1>Shop cricket bats</h1>
           <p>Hard tennis · Soft tennis · Season bats — prices in Rs. (incl. GST)</p>
-        </div>
+        </RevealOnScroll>
       </div>
 
       <div className="container shop-layout">
-        <aside className="shop-filters">
+        <RevealOnScroll as="aside" className="shop-filters" variant="fast">
           <label className="shop-search">
             <span>Search</span>
             <input
@@ -113,22 +114,33 @@ export default function Shop() {
           <Link to="/" className="shop-back">
             ← Back to home
           </Link>
-        </aside>
+        </RevealOnScroll>
 
         <section className="shop-grid-wrap">
           <div className="shop-meta">
             <strong>{loading ? '…' : sorted.length}</strong> products
           </div>
           {loading ? (
-            <div className="shop-empty">Loading catalogue…</div>
+            <div className="shop-grid" aria-hidden="true">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="product-card product-card--skeleton">
+                  <div className="skeleton skeleton--gallery" />
+                  <div className="product-card__body">
+                    <div className="skeleton skeleton--line short" />
+                    <div className="skeleton skeleton--line" />
+                    <div className="skeleton skeleton--btn" />
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : sorted.length === 0 ? (
             <div className="shop-empty">No bats match your filters.</div>
           ) : (
-            <div className="shop-grid">
+            <RevealOnScroll className="shop-grid" stagger step={60}>
               {sorted.map((product) => (
                 <ProductCard key={product.id} product={product} />
               ))}
-            </div>
+            </RevealOnScroll>
           )}
         </section>
       </div>

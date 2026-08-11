@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>H2R Sports — Database Structure</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #121a2b;
+      --panel-2: #182235;
+      --line: #2a3650;
+      --text: #e8eef7;
+      --muted: #9aa8bd;
+      --accent: #5b8def;
+      --ok: #3dba7a;
+      --warn: #d4a017;
+      --core: #5b8def;
+      --commerce: #3dba7a;
+      --content: #c9873a;
+      --ops: #8b95a8;
+      --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 32px 20px 64px; }
+    h1 { margin: 0 0 6px; font-size: 1.75rem; letter-spacing: -0.02em; }
+    .sub { color: var(--muted); margin: 0 0 28px; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+    .stat {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .stat b { display: block; font-size: 1.35rem; }
+    .stat span { color: var(--muted); font-size: 0.8rem; }
+    h2 {
+      margin: 28px 0 12px;
+      font-size: 1.05rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .diagram {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 20px;
+      overflow-x: auto;
+    }
+    svg { display: block; margin: 0 auto; max-width: 100%; }
+    .node rect { transition: fill 0.15s ease; }
+    .node:hover rect { fill: #243149; }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+    .dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 14px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .card-h {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      background: var(--panel-2);
+    }
+    .card-h strong { font-size: 0.95rem; }
+    .pill {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+    }
+    .pill.core { color: var(--core); border-color: #35507a; }
+    .pill.commerce { color: var(--ok); border-color: #2a6b4a; }
+    .pill.content { color: var(--content); border-color: #6e5228; }
+    .pill.ops { color: var(--ops); }
+    .card-b { padding: 12px 14px 14px; }
+    .purpose { color: var(--muted); font-size: 0.85rem; margin: 0 0 10px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 6px 4px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    th { color: var(--muted); font-weight: 650; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    td.code { font-family: ui-monospace, Consolas, monospace; color: var(--accent); }
+    .req { color: var(--ok); font-weight: 700; }
+    .flow {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+    }
+    .step {
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 0.82rem;
+      font-weight: 650;
+    }
+    .arrow { color: var(--muted); font-weight: 700; }
+    footer { margin-top: 36px; color: var(--muted); font-size: 0.78rem; }
+    @media (max-width: 700px) {
+      .stats { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>H2R Sports — Database Structure</h1>
+    <p class="sub">MongoDB / Mongoose visual reference for client handoff · 9 collections</p>
+
+    <div class="stats">
+      <div class="stat"><b>9</b><span>Collections</span></div>
+      <div class="stat"><b>MongoDB</b><span>Document store</span></div>
+      <div class="stat"><b>TTL</b><span>Pending checkout expiry</span></div>
+      <div class="stat"><b>Paid-only</b><span>Orders after verify</span></div>
+    </div>
+
+    <h2>Entity relationships</h2>
+    <div class="diagram">
+      <svg viewBox="0 0 920 420" width="920" height="420" role="img" aria-label="Database ER diagram">
+        <!-- edges -->
+        <g stroke="#4a5a78" stroke-width="1.6" fill="none">
+          <path d="M200 90 L200 150" marker-end="url(#arrow)" />
+          <path d="M200 190 L360 230" marker-end="url(#arrow)" />
+          <path d="M460 90 L460 150" marker-end="url(#arrow)" />
+          <path d="M460 190 L420 230" marker-end="url(#arrow)" />
+          <path d="M700 90 L520 240" marker-end="url(#arrow)" />
+          <path d="M700 90 L700 150" marker-end="url(#arrow)" />
+          <path d="M420 310 L420 350" stroke-dasharray="5 4" />
+        </g>
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill="#4a5a78" />
+          </marker>
+        </defs>
+
+        <!-- nodes -->
+        <g class="node">
+          <rect x="120" y="40" width="160" height="50" rx="10" fill="#182235" stroke="#5b8def" />
+          <text x="200" y="70" text-anchor="middle" fill="#e8eef7" font-size="14" font-weight="700" font-family="Segoe UI,sans-serif">users</text>
+        </g>
+        <g class="node">
+          <rect x="380" y="40" width="160" height="50" rx="10" fill="#182235" stroke="#5b8def" />
+          <text x="460" y="70" text-anchor="middle" fill="#e8eef7" font-size="14" font-weight="700" font-family="Segoe UI,sans-serif">collections</text>
+        </g>
+        <g class="node">
+          <rect x="620" y="40" width="160" height="50" rx="10" fill="#182235" stroke="#c9873a" />
+          <text x="700" y="70" text-anchor="middle" fill="#e8eef7" font-size="14" font-weight="700" font-family="Segoe UI,sans-serif">media</text>
+        </g>
+
+        <g class="node">
+          <rect x="120" y="150" width="160" height="40" rx="10" fill="#1a2438" stroke="#2a3650" />
+          <text x="200" y="175" text-anchor="middle" fill="#9aa8bd" font-size="12" font-family="Segoe UI,sans-serif">addresses[]</text>
+        </g>
+        <g class="node">
+          <rect x="380" y="150" width="160" height="40" rx="10" fill="#182235" stroke="#5b8def" />
+          <text x="460" y="175" text-anchor="middle" fill="#e8eef7" font-size="14" font-weight="700" font-family="Segoe UI,sans-serif">products</text>
+        </g>
+        <g class="node">
+          <rect x="620" y="150" width="160" height="40" rx="10" fill="#182235" stroke="#c9873a" />
+          <text x="700" y="175" text-anchor="middle" fill="#e8eef7" font-size="13" font-weight="700" font-family="Segoe UI,sans-serif">marketingsettings</text>
+        </g>
+
+        <g class="node">
+          <rect x="280" y="240" width="180" height="50" rx="10" fill="#182235" stroke="#3dba7a" />
+          <text x="370" y="270" text-anchor="middle" fill="#e8eef7" font-size="14" font-weight="700" font-family="Segoe UI,sans-serif">pendingcheckouts</text>
+        </g>
+        <g class="node">
+          <rect x="500" y="240" width="160" height="50" rx="10" fill="#182235" stroke="#3dba7a" />
+          <text x="580" y="270" text-anchor="middle" fill="#e8eef7" font-size="14" font-weight="700" font-family="Segoe UI,sans-serif">orders</text>
+        </g>
+
+        <g class="node">
+          <rect x="120" y="340" width="140" height="44" rx="10" fill="#182235" stroke="#c9873a" />
+          <text x="190" y="367" text-anchor="middle" fill="#e8eef7" font-size="13" font-weight="700" font-family="Segoe UI,sans-serif">reviews</text>
+        </g>
+        <g class="node">
+          <rect x="340" y="340" width="160" height="44" rx="10" fill="#182235" stroke="#8b95a8" />
+          <text x="420" y="367" text-anchor="middle" fill="#e8eef7" font-size="13" font-weight="700" font-family="Segoe UI,sans-serif">storebills</text>
+        </g>
+        <text x="420" y="330" text-anchor="middle" fill="#9aa8bd" font-size="11" font-family="Segoe UI,sans-serif">after payment verify →</text>
+      </svg>
+      <div class="legend">
+        <span><i class="dot" style="background:var(--core)"></i>Core</span>
+        <span><i class="dot" style="background:var(--commerce)"></i>Commerce</span>
+        <span><i class="dot" style="background:var(--content)"></i>Content</span>
+        <span><i class="dot" style="background:var(--ops)"></i>Ops</span>
+      </div>
+    </div>
+
+    <h2>Checkout flow</h2>
+    <div class="flow">
+      <div class="step">1. Select product</div><span class="arrow">→</span>
+      <div class="step">2. Phone / account</div><span class="arrow">→</span>
+      <div class="step">3. Address</div><span class="arrow">→</span>
+      <div class="step">4. PendingCheckout</div><span class="arrow">→</span>
+      <div class="step">5. Razorpay</div><span class="arrow">→</span>
+      <div class="step">6. Paid Order</div>
+    </div>
+
+    <h2>Collection schemas</h2>
+    <div class="grid">
+
+      <article class="card">
+        <div class="card-h"><strong>users</strong><span class="pill core">Core</span></div>
+        <div class="card-b">
+          <p class="purpose">Auth + embedded address book</p>
+          <table>
+            <tr><th>Field</th><th>Type</th><th></th></tr>
+            <tr><td class="code">name</td><td>String</td><td class="req">req</td></tr>
+            <tr><td class="code">email</td><td>String · unique</td><td class="req">req</td></tr>
+            <tr><td class="code">password</td><td>String · hashed</td><td class="req">req</td></tr>
+            <tr><td class="code">phone</td><td>String · partial unique</td><td></td></tr>
+            <tr><td class="code">role</td><td>customer | admin</td><td></td></tr>
+            <tr><td class="code">addresses[]</td><td>Embedded</td><td></td></tr>
+          </table>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-h"><strong>products</strong><span class="pill core">Core</span></div>
+        <div class="card-b">
+          <p class="purpose">Catalog · sizes &amp; weights</p>
+          <table>
+            <tr><th>Field</th><th>Type</th><th></th></tr>
+            <tr><td class="code">id</td><td>String · unique</td><td class="req">req</td></tr>
+            <tr><td class="code">name / price</td><td>String / Number</td><td class="req">req</td></tr>
+            <tr><td class="code">collection</td><td>→ collections.id</td><td class="req">req</td></tr>
+            <tr><td class="code">sizes[]</td><td>id, label, price</td><td></td></tr>
+            <tr><td class="code">weights[]</td><td>from–to range</td><td></td></tr>
+            <tr><td class="code">images[]</td><td>URL strings</td><td></td></tr>
+          </table>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-h"><strong>collections</strong><span class="pill core">Core</span></div>
+        <div class="card-b">
+          <p class="purpose">Editions / families</p>
+          <table>
+            <tr><th>Field</th><th>Type</th><th></th></tr>
+            <tr><td class="code">id / slug</td><td>unique strings</td><td class="req">req</td></tr>
+            <tr><td class="code">name</td><td>String</td><td class="req">req</td></tr>
+            <tr><td class="code">family</td><td>hard | soft tennis</td><td></td></tr>
+            <tr><td class="code">sortOrder</td><td>Number</td><td></td></tr>
+          </table>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-h"><strong>orders</strong><span class="pill commerce">Commerce</span></div>
+        <div class="card-b">
+          <p class="purpose">Paid fulfillment only</p>
+          <table>
+            <tr><th>Field</th><th>Type</th><th></th></tr>
+            <tr><td class="code">orderId</td><td>unique</td><td class="req">req</td></tr>
+            <tr><td class="code">status</td><td>ordered→delivered</td><td></td></tr>
+            <tr><td class="code">paymentStatus</td><td>paid | failed…</td><td></td></tr>
+            <tr><td class="code">customer / shipping</td><td>Objects</td><td class="req">req</td></tr>
+            <tr><td class="code">items[]</td><td>Line snapshot</td><td class="req">req</td></tr>
+            <tr><td class="code">total</td><td>Number INR</td><td class="req">req</td></tr>
+          </table>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-h"><strong>pendingcheckouts</strong><span class="pill commerce">Commerce</span></div>
+        <div class="card-b">
+          <p class="purpose">Razorpay drafts · TTL 24h</p>
+          <table>
+            <tr><th>Field</th><th>Type</th><th></th></tr>
+            <tr><td class="code">orderId</td><td>unique</td><td class="req">req</td></tr>
+            <tr><td class="code">razorpayOrderId</td><td>unique</td><td class="req">req</td></tr>
+            <tr><td class="code">amountPaise</td><td>Number</td><td class="req">req</td></tr>
+            <tr><td class="code">expiresAt</td><td>Date · TTL index</td><td></td></tr>
+          </table>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-h"><strong>reviews</strong><span class="pill content">Content</span></div>
+        <div class="card-b">
+          <p class="purpose">Review management · approve / hide / feature</p>
+          <table>
+            <tr><th>Field</th><th>Type</th><th></th></tr>
+            <tr><td class="code">name / text</td><td>String</td><td class="req">req</td></tr>
+            <tr><td class="code">rating</td><td>1–5</td><td></td></tr>
+            <tr><td class="code">location / productName</td><td>String</td><td></td></tr>
+            <tr><td class="code">status</td><td>pending \| approved \| hidden</td><td></td></tr>
+            <tr><td class="code">featured / sortOrder</td><td>Boolean / Number</td><td></td></tr>
+            <tr><td class="code">source</td><td>admin \| seed \| customer</td><td></td></tr>
+          </table>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-h"><strong>marketingsettings</strong><span class="pill content">Content</span></div>
+        <div class="card-b">
+          <p class="purpose">Videos + WhatsApp statuses</p>
+          <table>
+            <tr><th>Field</th><th>Type</th><th></th></tr>
+            <tr><td class="code">key</td><td>"default" singleton</td><td class="req">req</td></tr>
+            <tr><td class="code">floatingVideos[]</td><td>Embedded</td><td></td></tr>
+            <tr><td class="code">whatsappStatuses[]</td><td>Embedded</td><td></td></tr>
+          </table>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-h"><strong>media</strong><span class="pill content">Content</span></div>
+        <div class="card-b">
+          <p class="purpose">Binary files in Mongo</p>
+          <table>
+            <tr><th>Field</th><th>Type</th><th></th></tr>
+            <tr><td class="code">contentType</td><td>MIME</td><td class="req">req</td></tr>
+            <tr><td class="code">data</td><td>Buffer</td><td class="req">req</td></tr>
+            <tr><td class="code">filename / size</td><td>meta</td><td></td></tr>
+          </table>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-h"><strong>storebills</strong><span class="pill ops">Ops</span></div>
+        <div class="card-b">
+          <p class="purpose">Walk-in counter sales</p>
+          <table>
+            <tr><th>Field</th><th>Type</th><th></th></tr>
+            <tr><td class="code">billId</td><td>unique</td><td class="req">req</td></tr>
+            <tr><td class="code">itemName / amount</td><td>String / Number</td><td class="req">req</td></tr>
+            <tr><td class="code">paymentMethod</td><td>cash | upi | card</td><td></td></tr>
+            <tr><td class="code">soldAt</td><td>Date</td><td></td></tr>
+          </table>
+        </div>
+      </article>
+
+    </div>
+
+    <footer>
+      Generated from H2R Sports Mongoose models · also see DATABASE_STRUCTURE.md
+    </footer>
+  </div>
+</body>
+</html>

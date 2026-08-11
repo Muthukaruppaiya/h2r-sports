@@ -108,18 +108,30 @@ function StatusMedia({ url, mediaType, className = '', autoPlay = false, loop = 
   return <img className={className} src={src} alt="" onError={() => setBroken(true)} />;
 }
 
+const VIDEO_TABS = {
+  floating: { param: 'video', label: 'Floating videos', heading: 'Floating videos' },
+  showcase: { param: 'showcase', label: 'Homepage showcase', heading: 'Homepage showcase videos' },
+};
+
+function tabFromParam(tabParam) {
+  if (tabParam === 'video' || tabParam === 'videos') return 'floating';
+  if (tabParam === 'showcase') return 'showcase';
+  return 'statuses';
+}
+
 export default function Marketing() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const tabParam = searchParams.get('tab');
-  const tab = tabParam === 'video' || tabParam === 'videos' ? 'videos' : 'statuses';
+  const tab = tabFromParam(searchParams.get('tab'));
 
   const setTab = (next) => {
-    setSearchParams(next === 'videos' ? { tab: 'video' } : { tab: 'status' }, { replace: true });
+    const param = next === 'statuses' ? 'status' : VIDEO_TABS[next]?.param || 'status';
+    setSearchParams({ tab: param }, { replace: true });
   };
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [floatingVideos, setFloatingVideos] = useState([]);
+  const [showcaseVideos, setShowcaseVideos] = useState([]);
   const [whatsappStatuses, setWhatsappStatuses] = useState([]);
   const [products, setProducts] = useState([]);
   const [notice, setNotice] = useState({ type: '', text: '' });
@@ -128,6 +140,9 @@ export default function Marketing() {
 
   const [videoModal, setVideoModal] = useState(null);
   const [statusModal, setStatusModal] = useState(null);
+
+  const videoLists = { floating: floatingVideos, showcase: showcaseVideos };
+  const videoSetters = { floating: setFloatingVideos, showcase: setShowcaseVideos };
 
   useEffect(() => {
     const load = async () => {
@@ -138,6 +153,7 @@ export default function Marketing() {
         ]);
         const settings = marketingRes.data.settings || {};
         setFloatingVideos(settings.floatingVideos || []);
+        setShowcaseVideos(settings.showcaseVideos || []);
         setWhatsappStatuses(normalizeStatuses(settings.whatsappStatuses || []));
         setProducts(productsRes.data.products || []);
       } catch (_err) {
@@ -165,15 +181,17 @@ export default function Marketing() {
     [whatsappStatuses]
   );
 
-  const openNewVideo = () => {
+  const openNewVideo = (kind) => {
     setVideoModal({
+      kind,
       mode: 'create',
-      draft: { ...emptyVideo(), sortOrder: floatingVideos.length + 1 },
+      draft: { ...emptyVideo(), sortOrder: videoLists[kind].length + 1 },
     });
   };
 
-  const openEditVideo = (video) => {
+  const openEditVideo = (kind, video) => {
     setVideoModal({
+      kind,
       mode: 'edit',
       draft: {
         ...video,
@@ -273,7 +291,8 @@ export default function Marketing() {
 
   const saveVideoModal = () => {
     const draft = videoModal?.draft;
-    if (!draft) return;
+    const kind = videoModal?.kind;
+    if (!draft || !kind) return;
     if (!draft.title.trim()) {
       flash('error', 'Enter a video title.');
       return;
@@ -291,7 +310,7 @@ export default function Marketing() {
       return;
     }
 
-    setFloatingVideos((prev) => {
+    videoSetters[kind]((prev) => {
       const exists = prev.some((v) => v.id === draft.id);
       if (exists) return prev.map((v) => (v.id === draft.id ? draft : v));
       return [...prev, draft];
@@ -328,9 +347,9 @@ export default function Marketing() {
     flash('success', 'Saved — click Publish to go live.');
   };
 
-  const removeVideo = (id) => {
+  const removeVideo = (kind, id) => {
     if (!window.confirm('Remove this video?')) return;
-    setFloatingVideos((prev) => prev.filter((v) => v.id !== id));
+    videoSetters[kind]((prev) => prev.filter((v) => v.id !== id));
   };
 
   const removeStatus = (id) => {
@@ -338,8 +357,8 @@ export default function Marketing() {
     setWhatsappStatuses((prev) => prev.filter((s) => s.id !== id));
   };
 
-  const toggleVideoActive = (id) => {
-    setFloatingVideos((prev) =>
+  const toggleVideoActive = (kind, id) => {
+    videoSetters[kind]((prev) =>
       prev.map((v) => (v.id === id ? { ...v, active: v.active === false } : v))
     );
   };
@@ -363,12 +382,15 @@ export default function Marketing() {
     setSaving(true);
     try {
       const activeVideos = floatingVideos.filter((v) => v.videoUrl?.trim() || v.title?.trim());
+      const activeShowcaseVideos = showcaseVideos.filter((v) => v.videoUrl?.trim() || v.title?.trim());
       const res = await api.put('/admin/marketing', {
         floatingVideos: activeVideos,
+        showcaseVideos: activeShowcaseVideos,
         whatsappStatuses,
       });
       const settings = res.data.settings || {};
       setFloatingVideos(settings.floatingVideos || []);
+      setShowcaseVideos(settings.showcaseVideos || []);
       setWhatsappStatuses(normalizeStatuses(settings.whatsappStatuses || []));
       flash('success', 'Published.');
     } catch (err) {
@@ -394,8 +416,10 @@ export default function Marketing() {
   }
 
   const sortedVideos = [...floatingVideos].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+  const sortedShowcaseVideos = [...showcaseVideos].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
   const sortedStatuses = [...whatsappStatuses].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
   const activeVideos = floatingVideos.filter((v) => v.active !== false).length;
+  const activeShowcaseVideos = showcaseVideos.filter((v) => v.active !== false).length;
 
   return (
     <div className="mkt-studio adm-page">
@@ -424,7 +448,8 @@ export default function Marketing() {
         {[
           { label: 'Live', value: liveStatuses.length, color: '#059669', glow: 'rgba(5,150,105,0.14)' },
           { label: 'Statuses', value: whatsappStatuses.length, color: '#0f172a', glow: 'rgba(15,23,42,0.08)' },
-          { label: 'Videos', value: activeVideos, color: '#2563eb', glow: 'rgba(37,99,235,0.14)' },
+          { label: 'Floating videos', value: activeVideos, color: '#2563eb', glow: 'rgba(37,99,235,0.14)' },
+          { label: 'Showcase videos', value: activeShowcaseVideos, color: '#7c3aed', glow: 'rgba(124,58,237,0.14)' },
           { label: 'Products', value: products.length, color: '#b45309', glow: 'rgba(180,83,9,0.12)' },
         ].map((kpi, i) => (
           <div
@@ -456,12 +481,22 @@ export default function Marketing() {
         <button
           type="button"
           role="tab"
-          aria-selected={tab === 'videos'}
-          className={`mkt-seg__btn${tab === 'videos' ? ' is-active' : ''}`}
-          onClick={() => setTab('videos')}
+          aria-selected={tab === 'floating'}
+          className={`mkt-seg__btn${tab === 'floating' ? ' is-active' : ''}`}
+          onClick={() => setTab('floating')}
         >
-          Floating videos
+          Floating video
           <em>{floatingVideos.length}</em>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'showcase'}
+          className={`mkt-seg__btn${tab === 'showcase' ? ' is-active' : ''}`}
+          onClick={() => setTab('showcase')}
+        >
+          Homepage showcase
+          <em>{showcaseVideos.length}</em>
         </button>
       </div>
 
@@ -557,59 +592,36 @@ export default function Marketing() {
         </section>
       )}
 
-      {tab === 'videos' && (
-        <section className="mkt-board mkt-board--enter" key="videos">
-          <div className="mkt-board__bar">
-            <div>
-              <h2>Floating videos</h2>
-              <span>{activeVideos} active on store</span>
-            </div>
-            <button type="button" className="adm-btn adm-btn--primary" onClick={openNewVideo}>
-              + New video
-            </button>
-          </div>
+      {tab === 'floating' && (
+        <VideoBoard
+          key="floating"
+          heading="Floating video"
+          subheading="The draggable mini video bubble shown above WhatsApp on every page."
+          videos={sortedVideos}
+          activeCount={activeVideos}
+          emptyTitle="Add a shoppable floating video"
+          emptyAction="Add video"
+          onNew={() => openNewVideo('floating')}
+          onEdit={(video) => openEditVideo('floating', video)}
+          onToggle={(id) => toggleVideoActive('floating', id)}
+          onRemove={(id) => removeVideo('floating', id)}
+        />
+      )}
 
-          {sortedVideos.length === 0 ? (
-            <EmptyState title="Add a shoppable floating video" actionLabel="Add video" onAction={openNewVideo} />
-          ) : (
-            <div className="mkt-phone-grid">
-              {sortedVideos.map((video, index) => (
-                <article
-                  key={video.id}
-                  className={`mkt-phone${video.active === false ? ' is-off' : ''} mkt-anim`}
-                  style={{ animationDelay: `${Math.min(index, 8) * 0.05}s` }}
-                >
-                  <button type="button" className="mkt-phone__screen" onClick={() => openEditVideo(video)}>
-                    {video.videoUrl ? (
-                      <StatusMedia url={video.videoUrl} mediaType="video" autoPlay loop />
-                    ) : (
-                      <div className="mkt-media-broken">Upload video</div>
-                    )}
-                    <div className="mkt-phone__shade" />
-                    <span className={`mkt-chip mkt-chip--${video.active === false ? 'off' : 'live'}`}>
-                      {video.active === false ? 'Off' : 'Live'}
-                    </span>
-                    <div className="mkt-phone__caption">
-                      <strong>{video.title || 'Untitled'}</strong>
-                      <span>{video.productName || 'No product'}</span>
-                    </div>
-                  </button>
-                  <div className="mkt-phone__actions">
-                    <button type="button" className="adm-btn adm-btn--ghost" onClick={() => openEditVideo(video)}>
-                      Edit
-                    </button>
-                    <button type="button" className="adm-btn adm-btn--ghost" onClick={() => toggleVideoActive(video.id)}>
-                      {video.active === false ? 'Activate' : 'Pause'}
-                    </button>
-                    <button type="button" className="adm-btn adm-btn--danger" onClick={() => removeVideo(video.id)}>
-                      Delete
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
+      {tab === 'showcase' && (
+        <VideoBoard
+          key="showcase"
+          heading="Homepage showcase"
+          subheading="Powers the “See H2R In Action” carousel section on the homepage."
+          videos={sortedShowcaseVideos}
+          activeCount={activeShowcaseVideos}
+          emptyTitle="Add a homepage showcase video"
+          emptyAction="Add showcase video"
+          onNew={() => openNewVideo('showcase')}
+          onEdit={(video) => openEditVideo('showcase', video)}
+          onToggle={(id) => toggleVideoActive('showcase', id)}
+          onRemove={(id) => removeVideo('showcase', id)}
+        />
       )}
 
       <div className="mkt-mobile-bar" aria-label="Quick actions">
@@ -619,7 +631,7 @@ export default function Marketing() {
         <button
           type="button"
           className="adm-btn adm-btn--ghost"
-          onClick={tab === 'statuses' ? openNewStatus : openNewVideo}
+          onClick={() => (tab === 'statuses' ? openNewStatus() : openNewVideo(tab))}
         >
           {tab === 'statuses' ? '+ Status' : '+ Video'}
         </button>
@@ -630,7 +642,11 @@ export default function Marketing() {
 
       {videoModal && (
         <StudioDrawer
-          title={videoModal.mode === 'create' ? 'New floating video' : 'Edit floating video'}
+          title={
+            videoModal.mode === 'create'
+              ? `New ${videoModal.kind === 'showcase' ? 'showcase' : 'floating'} video`
+              : `Edit ${videoModal.kind === 'showcase' ? 'showcase' : 'floating'} video`
+          }
           onClose={() => setVideoModal(null)}
           onSave={saveVideoModal}
           saveLabel={videoModal.mode === 'create' ? 'Save video' : 'Update video'}
@@ -905,6 +921,77 @@ export default function Marketing() {
         </StudioDrawer>
       )}
     </div>
+  );
+}
+
+function VideoBoard({
+  heading,
+  subheading,
+  videos,
+  activeCount,
+  emptyTitle,
+  emptyAction,
+  onNew,
+  onEdit,
+  onToggle,
+  onRemove,
+}) {
+  return (
+    <section className="mkt-board mkt-board--enter">
+      <div className="mkt-board__bar">
+        <div>
+          <h2>{heading}</h2>
+          <span>
+            {subheading ? `${subheading} · ` : ''}
+            {activeCount} active on store
+          </span>
+        </div>
+        <button type="button" className="adm-btn adm-btn--primary" onClick={onNew}>
+          + New video
+        </button>
+      </div>
+
+      {videos.length === 0 ? (
+        <EmptyState title={emptyTitle} actionLabel={emptyAction} onAction={onNew} />
+      ) : (
+        <div className="mkt-phone-grid">
+          {videos.map((video, index) => (
+            <article
+              key={video.id}
+              className={`mkt-phone${video.active === false ? ' is-off' : ''} mkt-anim`}
+              style={{ animationDelay: `${Math.min(index, 8) * 0.05}s` }}
+            >
+              <button type="button" className="mkt-phone__screen" onClick={() => onEdit(video)}>
+                {video.videoUrl ? (
+                  <StatusMedia url={video.videoUrl} mediaType="video" autoPlay loop />
+                ) : (
+                  <div className="mkt-media-broken">Upload video</div>
+                )}
+                <div className="mkt-phone__shade" />
+                <span className={`mkt-chip mkt-chip--${video.active === false ? 'off' : 'live'}`}>
+                  {video.active === false ? 'Off' : 'Live'}
+                </span>
+                <div className="mkt-phone__caption">
+                  <strong>{video.title || 'Untitled'}</strong>
+                  <span>{video.productName || 'No product'}</span>
+                </div>
+              </button>
+              <div className="mkt-phone__actions">
+                <button type="button" className="adm-btn adm-btn--ghost" onClick={() => onEdit(video)}>
+                  Edit
+                </button>
+                <button type="button" className="adm-btn adm-btn--ghost" onClick={() => onToggle(video.id)}>
+                  {video.active === false ? 'Activate' : 'Pause'}
+                </button>
+                <button type="button" className="adm-btn adm-btn--danger" onClick={() => onRemove(video.id)}>
+                  Delete
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

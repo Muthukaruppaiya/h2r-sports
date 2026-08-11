@@ -5,6 +5,7 @@ import ProductRail from '../components/ProductRail';
 import TrustStrip from '../components/TrustStrip';
 import StatsStrip from '../components/StatsStrip';
 import Reviews from '../components/Reviews';
+import VideoShowcase from '../components/VideoShowcase';
 import AnnouncementBar from '../components/AnnouncementBar';
 import WhatsAppStatusBar from '../components/WhatsAppStatusBar';
 import RevealOnScroll from '../components/RevealOnScroll';
@@ -107,6 +108,10 @@ export default function Home() {
 
       <RevealOnScroll className="reveal-section">
         <ProductRail title="Our Bats" products={featured} loading={loading} />
+      </RevealOnScroll>
+
+      <RevealOnScroll className="reveal-section">
+        <VideoShowcase />
       </RevealOnScroll>
 
       <RevealOnScroll className="reveal-section">

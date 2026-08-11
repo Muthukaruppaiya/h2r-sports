@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
+import RevealOnScroll from '../components/RevealOnScroll';
 import { api } from '../api/store';
 
 export default function Collection() {
@@ -44,7 +45,7 @@ export default function Collection() {
   return (
     <main className="shop-page">
       <div className="shop-hero">
-        <div className="container">
+        <RevealOnScroll className="container" variant="fast">
           <p className="home-banner__eyebrow">
             {collection?.familyLabel || 'Collection'}
             {collection?.variant ? ` · ${collection.variant}` : ''}
@@ -54,20 +55,33 @@ export default function Collection() {
           {collection?.badge ? (
             <p className="shop-hero__badge">{collection.badge}</p>
           ) : null}
-        </div>
+        </RevealOnScroll>
       </div>
       <div className="container shop-grid-wrap" style={{ paddingBottom: 80 }}>
         <div className="shop-meta">
           <strong>{loading ? '…' : products.length}</strong> products
         </div>
         {loading ? (
-          <div className="shop-empty">Loading…</div>
+          <div className="shop-grid" aria-hidden="true">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="product-card product-card--skeleton">
+                <div className="skeleton skeleton--gallery" />
+                <div className="product-card__body">
+                  <div className="skeleton skeleton--line short" />
+                  <div className="skeleton skeleton--line" />
+                  <div className="skeleton skeleton--btn" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : products.length === 0 ? (
+          <div className="shop-empty">No bats in this collection yet.</div>
         ) : (
-          <div className="shop-grid">
+          <RevealOnScroll className="shop-grid" stagger step={60}>
             {products.map((p) => (
               <ProductCard key={p.id} product={p} />
             ))}
-          </div>
+          </RevealOnScroll>
         )}
       </div>
     </main>

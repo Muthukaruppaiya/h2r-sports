@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api/client';
 import { api as storeApi } from '../api/store';
+import RevealOnScroll from '../components/RevealOnScroll';
 import { formatINR, INDIAN_STATES } from '../utils/india';
 import {
   STATUS_STAGES,
@@ -299,7 +300,7 @@ export default function MyOrders() {
                 </button>
               </div>
             ) : (
-              <div className="acct-orders">
+              <RevealOnScroll as="div" className="acct-orders" stagger step={70} variant="fast">
                 {orders.map((order) => {
                   const open = expandedId === order.orderId;
                   const statusStyle = getStatusStyle(order.status);
@@ -455,7 +456,7 @@ export default function MyOrders() {
                     </article>
                   );
                 })}
-              </div>
+              </RevealOnScroll>
             )}
           </section>
         )}
@@ -478,7 +479,7 @@ export default function MyOrders() {
                 </button>
               </div>
             ) : (
-              <div className="acct-again">
+              <RevealOnScroll as="div" className="acct-again" stagger step={70} variant="fast">
                 {buyAgainItems.map((item) => (
                   <article key={item.id} className="acct-again__card">
                     <div className="acct-again__visual" aria-hidden="true">
@@ -495,7 +496,7 @@ export default function MyOrders() {
                     </button>
                   </article>
                 ))}
-              </div>
+              </RevealOnScroll>
             )}
           </section>
         )}

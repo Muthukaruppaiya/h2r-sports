@@ -360,7 +360,7 @@ export default function Checkout() {
       {error && <div className="ck-error">{error}</div>}
 
       {step === 'phone' && (
-        <form className="ck-card ck-card--narrow" onSubmit={handlePhoneContinue}>
+        <form className="ck-card ck-card--narrow ck-step" onSubmit={handlePhoneContinue}>
           <h1>Enter mobile number</h1>
           <p className="ck-lead">We’ll use this to find or create your H2R account.</p>
           <label className="ck-field">
@@ -384,7 +384,7 @@ export default function Checkout() {
       )}
 
       {step === 'register' && (
-        <form className="ck-card ck-card--narrow" onSubmit={handleRegister}>
+        <form className="ck-card ck-card--narrow ck-step" onSubmit={handleRegister}>
           <h1>Create your account</h1>
           <p className="ck-lead">New number +91 {phone}. Just your name to continue.</p>
           <label className="ck-field">
@@ -401,7 +401,7 @@ export default function Checkout() {
       )}
 
       {step === 'address' && (
-        <div className="ck-stack">
+        <div className="ck-stack ck-step">
           <div className="ck-card">
             <div className="ck-card__row">
               <h2>Deliver to</h2>
@@ -576,7 +576,7 @@ export default function Checkout() {
       )}
 
       {step === 'summary' && selectedAddress && (
-        <div className="ck-stack">
+        <div className="ck-stack ck-step">
           <div className="ck-card">
             <div className="ck-card__row">
               <h2>Deliver to</h2>

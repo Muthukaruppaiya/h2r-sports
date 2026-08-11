@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>H2R Sports — Database Structure</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 16mm 14mm 16mm 14mm;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+      color: #111827;
+      font-size: 10.5pt;
+      line-height: 1.45;
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 20pt;
+      letter-spacing: -0.02em;
+      color: #0a2540;
+    }
+    .meta {
+      color: #4b5563;
+      font-size: 9.5pt;
+      margin: 0 0 18px;
+    }
+    h2 {
+      margin: 22px 0 8px;
+      font-size: 12.5pt;
+      color: #0a2540;
+      border-bottom: 1.5px solid #0a2540;
+      padding-bottom: 4px;
+      page-break-after: avoid;
+    }
+    h3 {
+      margin: 14px 0 6px;
+      font-size: 11pt;
+      color: #163455;
+      page-break-after: avoid;
+    }
+    h4 {
+      margin: 10px 0 4px;
+      font-size: 10pt;
+      color: #374151;
+      page-break-after: avoid;
+    }
+    p { margin: 0 0 8px; }
+    .badge-row { margin: 0 0 14px; }
+    .badge {
+      display: inline-block;
+      border: 1px solid #cbd5e1;
+      border-radius: 999px;
+      padding: 2px 9px;
+      font-size: 8.5pt;
+      margin-right: 6px;
+      color: #334155;
+      background: #f8fafc;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0 0 12px;
+      font-size: 9pt;
+      page-break-inside: avoid;
+    }
+    th, td {
+      border: 1px solid #d1d5db;
+      padding: 5px 7px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #0a2540;
+      color: #fff;
+      font-weight: 650;
+      font-size: 8.5pt;
+    }
+    tr:nth-child(even) td { background: #f8fafc; }
+    code, .mono {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 8.5pt;
+    }
+    .section { page-break-inside: avoid; margin-bottom: 10px; }
+    .note {
+      background: #f1f5f9;
+      border-left: 3px solid #0a2540;
+      padding: 8px 10px;
+      margin: 8px 0 14px;
+      font-size: 9pt;
+      color: #334155;
+    }
+    .flow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      margin: 8px 0 14px;
+    }
+    .step {
+      border: 1px solid #94a3b8;
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: 8.5pt;
+      font-weight: 650;
+      background: #fff;
+    }
+    .arrow { color: #64748b; font-weight: 700; }
+    ul { margin: 4px 0 10px; padding-left: 18px; }
+    li { margin: 2px 0; }
+    .footer {
+      margin-top: 24px;
+      padding-top: 8px;
+      border-top: 1px solid #cbd5e1;
+      color: #64748b;
+      font-size: 8pt;
+    }
+    .tree {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 8.5pt;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 10px 12px;
+      white-space: pre;
+      line-height: 1.35;
+    }
+  </style>
+</head>
+<body>
+  <h1>H2R Sports — Database Structure</h1>
+  <p class="meta">
+    MongoDB · Mongoose &nbsp;|&nbsp; Database: <span class="mono">h2r-sports</span> &nbsp;|&nbsp;
+    E-commerce reference schema (catalog, users, checkout, orders, marketing, store billing)
+  </p>
+  <div class="badge-row">
+    <span class="badge">9 collections</span>
+    <span class="badge">Paid orders only after verify</span>
+    <span class="badge">Pending checkout TTL 24h</span>
+  </div>
+
+  <h2>1. Overview</h2>
+  <table>
+    <thead>
+      <tr><th>#</th><th>Collection</th><th>Purpose</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>1</td><td class="mono">users</td><td>Customers &amp; admins + saved addresses</td></tr>
+      <tr><td>2</td><td class="mono">products</td><td>Product catalog (sizes, weights, images)</td></tr>
+      <tr><td>3</td><td class="mono">collections</td><td>Product groupings / editions</td></tr>
+      <tr><td>4</td><td class="mono">orders</td><td>Paid fulfillment orders only</td></tr>
+      <tr><td>5</td><td class="mono">pendingcheckouts</td><td>Temporary Razorpay drafts (auto-expire)</td></tr>
+      <tr><td>6</td><td class="mono">reviews</td><td>Storefront testimonials</td></tr>
+      <tr><td>7</td><td class="mono">marketingsettings</td><td>Floating videos + WhatsApp statuses</td></tr>
+      <tr><td>8</td><td class="mono">media</td><td>Binary media stored in MongoDB</td></tr>
+      <tr><td>9</td><td class="mono">storebills</td><td>Walk-in / physical shop sales</td></tr>
+    </tbody>
+  </table>
+
+  <h2>2. Checkout data flow</h2>
+  <div class="flow">
+    <span class="step">Select product</span><span class="arrow">→</span>
+    <span class="step">Phone / account</span><span class="arrow">→</span>
+    <span class="step">Address</span><span class="arrow">→</span>
+    <span class="step">PendingCheckout</span><span class="arrow">→</span>
+    <span class="step">Razorpay pay</span><span class="arrow">→</span>
+    <span class="step">Paid Order</span>
+  </div>
+  <div class="note">
+    <strong>Rule:</strong> A real <span class="mono">orders</span> document is created only after Razorpay
+    payment signature verification. Unpaid attempts stay in <span class="mono">pendingcheckouts</span>
+    and expire via TTL.
+  </div>
+
+  <h2>3. Collection schemas</h2>
+
+  <div class="section">
+    <h3>3.1 users</h3>
+    <p>Customer / admin accounts. Password hashed with bcrypt before save.</p>
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">name</td><td>String</td><td>Yes</td><td>Full name</td></tr>
+        <tr><td class="mono">email</td><td>String</td><td>Yes</td><td>Unique, lowercase</td></tr>
+        <tr><td class="mono">password</td><td>String</td><td>Yes</td><td>Hashed</td></tr>
+        <tr><td class="mono">phone</td><td>String</td><td>—</td><td>Unique when non-empty (partial index)</td></tr>
+        <tr><td class="mono">role</td><td>Enum</td><td>—</td><td>customer | admin</td></tr>
+        <tr><td class="mono">addresses[]</td><td>Embedded[]</td><td>—</td><td>Address book</td></tr>
+        <tr><td class="mono">createdAt / updatedAt</td><td>Date</td><td>auto</td><td>timestamps</td></tr>
+      </tbody>
+    </table>
+    <h4>Embedded: addresses[]</h4>
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">label</td><td>String</td><td>—</td><td>Home / Work / Other</td></tr>
+        <tr><td class="mono">name</td><td>String</td><td>Yes</td><td>Receiver</td></tr>
+        <tr><td class="mono">phone</td><td>String</td><td>Yes</td><td>Delivery phone</td></tr>
+        <tr><td class="mono">addressLine1</td><td>String</td><td>Yes</td><td></td></tr>
+        <tr><td class="mono">addressLine2</td><td>String</td><td>—</td><td></td></tr>
+        <tr><td class="mono">city / state / pincode</td><td>String</td><td>Yes</td><td>6-digit PIN</td></tr>
+        <tr><td class="mono">isDefault</td><td>Boolean</td><td>—</td><td>Default delivery address</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h3>3.2 products</h3>
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">id</td><td>String</td><td>Yes</td><td>Public product id (unique)</td></tr>
+        <tr><td class="mono">name</td><td>String</td><td>Yes</td><td></td></tr>
+        <tr><td class="mono">price</td><td>Number</td><td>Yes</td><td>INR</td></tr>
+        <tr><td class="mono">compareAt</td><td>Number</td><td>—</td><td>MRP / strike price</td></tr>
+        <tr><td class="mono">collection</td><td>String</td><td>Yes</td><td>→ collections.id</td></tr>
+        <tr><td class="mono">category</td><td>String</td><td>Yes</td><td></td></tr>
+        <tr><td class="mono">sizes[]</td><td>Embedded[]</td><td>—</td><td>id, label, price</td></tr>
+        <tr><td class="mono">weights[]</td><td>Embedded[]</td><td>—</td><td>id, from, to, label</td></tr>
+        <tr><td class="mono">images[]</td><td>String[]</td><td>—</td><td>URLs / media paths</td></tr>
+        <tr><td class="mono">features[]</td><td>String[]</td><td>—</td><td></td></tr>
+        <tr><td class="mono">topSelling / mostLoved / inStock</td><td>Boolean</td><td>—</td><td>Flags</td></tr>
+        <tr><td class="mono">description / tagline / badge / willow / madeIn</td><td>String</td><td>—</td><td>Merchandising</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h3>3.3 collections</h3>
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">id</td><td>String</td><td>Yes</td><td>Unique business id</td></tr>
+        <tr><td class="mono">name</td><td>String</td><td>Yes</td><td>Display name</td></tr>
+        <tr><td class="mono">slug</td><td>String</td><td>Yes</td><td>URL slug (unique)</td></tr>
+        <tr><td class="mono">family</td><td>String</td><td>—</td><td>hard-tennis | soft-tennis</td></tr>
+        <tr><td class="mono">familyLabel / blurb / badge / variant</td><td>String</td><td>—</td><td></td></tr>
+        <tr><td class="mono">featured</td><td>Boolean</td><td>—</td><td></td></tr>
+        <tr><td class="mono">sortOrder</td><td>Number</td><td>—</td><td>Default 100</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h3>3.4 orders</h3>
+    <p>Real shop orders — created only after successful payment verification.</p>
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">orderId</td><td>String</td><td>Yes</td><td>Public id (unique)</td></tr>
+        <tr><td class="mono">status</td><td>Enum</td><td>—</td><td>ordered → accepted → packed → shipped → delivered · cancelled</td></tr>
+        <tr><td class="mono">paymentStatus</td><td>Enum</td><td>—</td><td>pending | paid | failed | refunded | pending_cod</td></tr>
+        <tr><td class="mono">paymentMethod</td><td>Enum</td><td>Yes</td><td>razorpay | upi | card | cod</td></tr>
+        <tr><td class="mono">razorpayOrderId / razorpayPaymentId</td><td>String</td><td>—</td><td>Gateway ids</td></tr>
+        <tr><td class="mono">paymentMeta</td><td>Mixed</td><td>—</td><td>Gateway raw meta</td></tr>
+        <tr><td class="mono">customer{}</td><td>Object</td><td>Yes</td><td>name, phone, email</td></tr>
+        <tr><td class="mono">shipping{}</td><td>Object</td><td>Yes</td><td>address lines, city, state, pincode</td></tr>
+        <tr><td class="mono">items[]</td><td>Embedded[]</td><td>Yes</td><td>Line snapshot at purchase</td></tr>
+        <tr><td class="mono">subtotal / shippingFee / discount / total</td><td>Number</td><td>Yes*</td><td>*total &amp; subtotal required</td></tr>
+        <tr><td class="mono">currency</td><td>String</td><td>—</td><td>Default INR</td></tr>
+        <tr><td class="mono">courier{}</td><td>Object</td><td>—</td><td>name, trackingId, trackingUrl, notes</td></tr>
+        <tr><td class="mono">statusTimestamps{}</td><td>Object</td><td>—</td><td>Per-stage dates</td></tr>
+        <tr><td class="mono">statusHistory[]</td><td>Embedded[]</td><td>—</td><td>from, to, changedAt, changedBy, note</td></tr>
+      </tbody>
+    </table>
+    <h4>Embedded: items[]</h4>
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Required</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">id, name, sizeId, sizeLabel</td><td>String</td><td>Yes</td></tr>
+        <tr><td class="mono">weightId, weightLabel</td><td>String</td><td>—</td></tr>
+        <tr><td class="mono">price, qty, lineTotal</td><td>Number</td><td>Yes</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h3>3.5 pendingcheckouts</h3>
+    <p>Temporary payment drafts. TTL index deletes when <span class="mono">expiresAt</span> is reached (default +24h).</p>
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">orderId</td><td>String</td><td>Yes</td><td>Reserved public id (unique)</td></tr>
+        <tr><td class="mono">razorpayOrderId</td><td>String</td><td>Yes</td><td>Gateway order (unique)</td></tr>
+        <tr><td class="mono">amountPaise</td><td>Number</td><td>Yes</td><td>Amount in paise</td></tr>
+        <tr><td class="mono">customer{} / shipping{}</td><td>Object</td><td>Yes</td><td>Same shape as Order</td></tr>
+        <tr><td class="mono">items[]</td><td>Array</td><td>Yes</td><td>Line snapshot</td></tr>
+        <tr><td class="mono">subtotal / shippingFee / total</td><td>Number</td><td>Yes*</td><td></td></tr>
+        <tr><td class="mono">expiresAt</td><td>Date</td><td>—</td><td>TTL expireAfterSeconds: 0</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h3>3.6 reviews — Review Management</h3>
+    <p>Admin-managed testimonials. Public home shows only <span class="mono">status: approved</span>.</p>
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">name</td><td>String</td><td>Yes</td><td>Reviewer name</td></tr>
+        <tr><td class="mono">text</td><td>String</td><td>Yes</td><td>Review body</td></tr>
+        <tr><td class="mono">rating</td><td>Number</td><td>—</td><td>1–5 · default 5</td></tr>
+        <tr><td class="mono">location</td><td>String</td><td>—</td><td>City / region</td></tr>
+        <tr><td class="mono">image</td><td>String</td><td>—</td><td>Optional photo URL</td></tr>
+        <tr><td class="mono">productId / productName</td><td>String</td><td>—</td><td>Optional product link</td></tr>
+        <tr><td class="mono">status</td><td>Enum</td><td>—</td><td>pending \| approved \| hidden</td></tr>
+        <tr><td class="mono">featured</td><td>Boolean</td><td>—</td><td>Pin on home marquee</td></tr>
+        <tr><td class="mono">sortOrder</td><td>Number</td><td>—</td><td>Lower = earlier</td></tr>
+        <tr><td class="mono">source</td><td>Enum</td><td>—</td><td>admin \| seed \| customer</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Admin:</strong> GET/POST/PUT/DELETE <span class="mono">/api/admin/reviews</span> · <strong>Public:</strong> GET <span class="mono">/api/reviews</span> (approved only)</p>
+  </div>
+
+  <div class="section">
+    <h3>3.7 marketingsettings</h3>
+    <p>Singleton-style settings (<span class="mono">key: "default"</span>).</p>
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">key</td><td>String</td><td>Yes</td><td>Unique · default "default"</td></tr>
+        <tr><td class="mono">floatingVideos[]</td><td>Embedded[]</td><td>—</td><td>id, title, videoUrl, productPath, active, sortOrder…</td></tr>
+        <tr><td class="mono">whatsappStatuses[]</td><td>Embedded[]</td><td>—</td><td>mediaUrl, mediaType image|video, expiresAt, CTA…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h3>3.8 media</h3>
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">filename</td><td>String</td><td>—</td><td>Original name</td></tr>
+        <tr><td class="mono">contentType</td><td>String</td><td>Yes</td><td>MIME type</td></tr>
+        <tr><td class="mono">size</td><td>Number</td><td>—</td><td>Bytes</td></tr>
+        <tr><td class="mono">data</td><td>Buffer</td><td>Yes</td><td>File bytes</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h3>3.9 storebills</h3>
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">billId</td><td>String</td><td>Yes</td><td>Unique bill number</td></tr>
+        <tr><td class="mono">customerName / customerPhone</td><td>String</td><td>—</td><td></td></tr>
+        <tr><td class="mono">productId / itemName</td><td>String</td><td>*</td><td>itemName required</td></tr>
+        <tr><td class="mono">size / weight labels</td><td>String</td><td>—</td><td></td></tr>
+        <tr><td class="mono">qty / unitPrice / discount / amount</td><td>Number</td><td>*</td><td>amount required</td></tr>
+        <tr><td class="mono">paymentMethod</td><td>Enum</td><td>—</td><td>cash | upi | card</td></tr>
+        <tr><td class="mono">soldAt</td><td>Date</td><td>—</td><td>Sale timestamp</td></tr>
+        <tr><td class="mono">notes</td><td>String</td><td>—</td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>4. Logical relationships</h2>
+  <table>
+    <thead><tr><th>From</th><th>To</th><th>How</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">products.collection</td><td class="mono">collections.id</td><td>Soft string reference</td></tr>
+      <tr><td class="mono">orders.items[].id</td><td class="mono">products.id</td><td>Snapshot at purchase</td></tr>
+      <tr><td class="mono">pendingcheckouts</td><td class="mono">orders</td><td>Converted after payment verify</td></tr>
+      <tr><td class="mono">marketing / product URLs</td><td class="mono">media._id</td><td>Via /api/media/:id</td></tr>
+      <tr><td class="mono">users.addresses</td><td>checkout shipping</td><td>Copied into order at pay time</td></tr>
+    </tbody>
+  </table>
+  <div class="note">MongoDB does not enforce foreign keys. Integrity is handled in application code.</div>
+
+  <h2>5. Indexes summary</h2>
+  <table>
+    <thead><tr><th>Collection</th><th>Index</th><th>Type</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">users</td><td>email · phone</td><td>unique · unique (partial)</td></tr>
+      <tr><td class="mono">products</td><td>id</td><td>unique</td></tr>
+      <tr><td class="mono">collections</td><td>id · slug</td><td>unique</td></tr>
+      <tr><td class="mono">orders</td><td>orderId · razorpayOrderId</td><td>unique · index</td></tr>
+      <tr><td class="mono">pendingcheckouts</td><td>orderId · razorpayOrderId · expiresAt</td><td>unique · TTL</td></tr>
+      <tr><td class="mono">marketingsettings</td><td>key</td><td>unique</td></tr>
+      <tr><td class="mono">storebills</td><td>billId · soldAt · paymentMethod</td><td>unique · indexes</td></tr>
+    </tbody>
+  </table>
+
+  <h2>6. Document shape map</h2>
+  <div class="tree">users
+ └─ addresses[]
+
+products
+ ├─ sizes[]
+ └─ weights[]
+
+orders
+ ├─ customer {}
+ ├─ shipping {}
+ ├─ items[]
+ ├─ courier {}
+ ├─ statusTimestamps {}
+ └─ statusHistory[]
+
+pendingcheckouts
+ ├─ customer {}
+ ├─ shipping {}
+ └─ items[]
+
+marketingsettings
+ ├─ floatingVideos[]
+ └─ whatsappStatuses[]
+
+collections · reviews · media · storebills</div>
+
+  <div class="footer">
+    H2R Sports · Database Structure (PDF) · Generated from Mongoose models · For client reference only
+  </div>
+</body>
+</html>

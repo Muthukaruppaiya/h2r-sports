@@ -1,5 +1,6 @@
 import { Link, useParams } from 'react-router-dom';
 import { BRAND } from '../utils/india';
+import RevealOnScroll from '../components/RevealOnScroll';
 
 const POLICIES = {
   shipping: {
@@ -49,30 +50,38 @@ export default function Policy() {
 
   if (!policy) {
     return (
-      <main className="container policy-page">
-        <h1>Policy not found</h1>
-        <Link to="/">Back home</Link>
+      <main className="policy-page">
+        <div className="container policy-card policy-card--empty">
+          <h1>Policy not found</h1>
+          <Link to="/">Back home</Link>
+        </div>
       </main>
     );
   }
 
   return (
     <main className="policy-page">
-      <div className="container">
-        <p className="home-banner__eyebrow" style={{ color: 'var(--gray-400)' }}>
-          Policies
-        </p>
-        <h1>{policy.title}</h1>
-        {policy.body.map((p) => (
-          <p key={p}>{p}</p>
-        ))}
-        <div className="policy-page__nav">
+      <div className="policy-hero">
+        <RevealOnScroll className="container" variant="fast">
+          <p className="home-banner__eyebrow">Policies</p>
+          <h1>{policy.title}</h1>
+        </RevealOnScroll>
+      </div>
+
+      <div className="container policy-layout">
+        <nav className="policy-page__nav" aria-label="Policy pages">
           {Object.entries(POLICIES).map(([key, val]) => (
             <Link key={key} to={`/policies/${key}`} className={key === slug ? 'is-active' : ''}>
               {val.title}
             </Link>
           ))}
-        </div>
+        </nav>
+
+        <RevealOnScroll as="article" className="policy-card" variant="fast">
+          {policy.body.map((p) => (
+            <p key={p}>{p}</p>
+          ))}
+        </RevealOnScroll>
       </div>
     </main>
   );

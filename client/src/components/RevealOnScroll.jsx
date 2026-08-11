@@ -3,7 +3,9 @@ import { useEffect, useRef } from 'react';
 /**
  * Reveals children with a smooth upward fade (+ slight scale/blur) as they
  * enter the viewport. Pass `stagger` to animate direct children one-by-one
- * instead of the whole block at once.
+ * instead of the whole block at once. Pass `variant="fast"` for a lighter,
+ * quicker fade (no blur) suited to small inline elements like buttons or
+ * form fields, where the heavier default feels sluggish.
  */
 export default function RevealOnScroll({
   children,
@@ -11,8 +13,10 @@ export default function RevealOnScroll({
   as: Tag = 'div',
   stagger = false,
   step = 90,
+  variant = 'up',
 }) {
   const ref = useRef(null);
+  const revealClass = variant === 'fast' ? 'reveal-fast' : 'reveal-up';
 
   useEffect(() => {
     const el = ref.current;
@@ -22,11 +26,11 @@ export default function RevealOnScroll({
     if (stagger) {
       targets = Array.from(el.children);
       targets.forEach((node, i) => {
-        node.classList.add('reveal-up');
+        node.classList.add(revealClass);
         node.style.setProperty('--reveal-delay', `${Math.min(i, 8) * step}ms`);
       });
     } else {
-      el.classList.add('reveal-up');
+      el.classList.add(revealClass);
       targets = [el];
     }
 
@@ -44,7 +48,7 @@ export default function RevealOnScroll({
 
     targets.forEach((node) => io.observe(node));
     return () => io.disconnect();
-  }, [stagger, step]);
+  }, [stagger, step, revealClass]);
 
   return (
     <Tag ref={ref} className={className}>
