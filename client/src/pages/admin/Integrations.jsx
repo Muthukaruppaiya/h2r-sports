@@ -10,6 +10,10 @@ export default function Integrations() {
           Add webhook URL <code>/api/payments/razorpay/webhook</code> with{' '}
           <code>RAZORPAY_WEBHOOK_SECRET</code> for payment.captured.
         </li>
+        <li>
+          <strong>Order email</strong> — send from <code>SMTP_USER</code> (your mailbox). Client Gmail is{' '}
+          <code>STORE_EMAIL</code> only (copy + reply-to). No client App Password needed.
+        </li>
         <li>Shiprocket — planned</li>
         <li>WhatsApp Business API — planned</li>
       </ul>

@@ -2,8 +2,9 @@ import nodemailer from 'nodemailer';
 
 const STORE_EMAIL = process.env.STORE_EMAIL || 'h2rsports7@gmail.com';
 const STORE_PHONE = process.env.STORE_PHONE || '+91 99949 78963';
-const SMTP_USER = process.env.SMTP_USER || STORE_EMAIL;
+const SMTP_USER = process.env.SMTP_USER || '';
 const SMTP_PASS = process.env.SMTP_PASS || '';
+const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER;
 const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
 const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
 
@@ -167,7 +168,7 @@ export async function sendOrderEmail(orderDoc, event) {
 
   const mailer = getTransporter();
   if (!mailer) {
-    console.warn('Order email skipped: set SMTP_USER and SMTP_PASS (Gmail app password) on the server.');
+    console.warn('Order email skipped: set SMTP_USER and SMTP_PASS on the sending mailbox (not the client Gmail).');
     return { sent: false, reason: 'not-configured' };
   }
 
@@ -181,7 +182,7 @@ export async function sendOrderEmail(orderDoc, event) {
 
   try {
     await mailer.sendMail({
-      from: `H2R Sports <${SMTP_USER}>`,
+      from: `H2R Sports <${SMTP_FROM}>`,
       to,
       bcc,
       replyTo: STORE_EMAIL,

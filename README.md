@@ -51,9 +51,8 @@ Set environment variables:
 - `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` (live keys when ready)
 - `RAZORPAY_WEBHOOK_SECRET` — Razorpay Dashboard → Webhooks → `payment.captured`  
   URL: `https://h2r-sports.onrender.com/api/payments/razorpay/webhook`
-- `SMTP_USER=h2rsports7@gmail.com`
-- `SMTP_PASS` — Gmail **App Password** (not the normal Gmail login password)
-- `STORE_EMAIL=h2rsports7@gmail.com`
+- `SMTP_USER` / `SMTP_PASS` — **your** sending mailbox (your Gmail App Password, Hostinger email, or Brevo). Not the client Gmail.
+- `STORE_EMAIL=h2rsports7@gmail.com` — client inbox (BCC + Reply-To only)
 - Do **not** set `SEED_DEFAULT_ADMIN` on Render. Change the admin password if it is still the old default.
 
 Start command: `npm start` (from `server/`)
