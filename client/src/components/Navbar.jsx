@@ -66,12 +66,19 @@ const Icon = {
   ),
 };
 
-const COLLECTIONS = [
-  { to: '/collections/killer-edition', label: 'Killer', hint: 'Hard-hitting range', icon: Icon.killer },
-  { to: '/collections/karrupu-edition', label: 'Karrupu', hint: 'Dark edition bats', icon: Icon.karrupu },
-  { to: '/collections/beast-edition', label: 'Beast', hint: 'Power profile', icon: Icon.beast },
-  { to: '/collections/stumper-edition', label: 'Stumper', hint: 'Match ready', icon: Icon.stumper },
-  { to: '/collections/soft-tennis-kerala-scoop', label: 'Soft Tennis', hint: 'Kerala scoop', icon: Icon.soft },
+const COLLECTION_ICONS = {
+  'killer-edition': Icon.killer,
+  'karrupu-edition': Icon.karrupu,
+  'beast-edition': Icon.beast,
+  'stumper-edition': Icon.stumper,
+  'soft-tennis-kerala-scoop': Icon.soft,
+};
+
+const FALLBACK_COLLECTIONS = [
+  { to: '/collections/killer-edition', slug: 'killer-edition', label: 'Killer', hint: 'Hard-hitting range', icon: Icon.killer },
+  { to: '/collections/karrupu-edition', slug: 'karrupu-edition', label: 'Karrupu', hint: 'Dark edition bats', icon: Icon.karrupu },
+  { to: '/collections/stumper-edition', slug: 'stumper-edition', label: 'Stumper', hint: 'Match ready', icon: Icon.stumper },
+  { to: '/collections/soft-tennis-kerala-scoop', slug: 'soft-tennis-kerala-scoop', label: 'Soft Tennis', hint: 'Kerala scoop', icon: Icon.soft },
 ];
 
 function NavItem({ to, end, onClick, icon, label, hint, accent, className = '' }) {
@@ -102,6 +109,7 @@ export default function Navbar() {
   const [results, setResults] = useState([]);
   const [signedIn, setSignedIn] = useState(false);
   const [userName, setUserName] = useState('');
+  const [navCollections, setNavCollections] = useState(FALLBACK_COLLECTIONS);
   const inputRef = useRef(null);
   const navigate = useNavigate();
 
@@ -114,7 +122,12 @@ export default function Navbar() {
   useEffect(() => {
     const syncAuth = () => {
       const token = localStorage.getItem('h2r_token');
-      const user = JSON.parse(localStorage.getItem('h2r_user') || '{}');
+      let user = {};
+      try {
+        user = JSON.parse(localStorage.getItem('h2r_user') || '{}');
+      } catch {
+        user = {};
+      }
       setSignedIn(Boolean(token));
       setUserName(user?.name?.split?.(' ')?.[0] || '');
     };
@@ -122,6 +135,27 @@ export default function Navbar() {
     window.addEventListener('storage', syncAuth);
     return () => window.removeEventListener('storage', syncAuth);
   }, [menuOpen]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getCollections()
+      .then((data) => {
+        if (cancelled) return;
+        const list = (data.collections || []).map((c) => ({
+          to: `/collections/${c.slug}`,
+          slug: c.slug,
+          label: c.variant || c.name,
+          hint: c.familyLabel || '',
+          icon: COLLECTION_ICONS[c.slug] || Icon.shop,
+        }));
+        if (list.length) setNavCollections(list);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (searchOpen) inputRef.current?.focus();
@@ -197,7 +231,7 @@ export default function Navbar() {
 
           <div className="navbar__group">
             <p className="navbar__group-label">Collections</p>
-            {COLLECTIONS.map((c) => (
+            {navCollections.map((c) => (
               <NavItem
                 key={c.to}
                 to={c.to}
@@ -265,7 +299,7 @@ export default function Navbar() {
 
         <nav className="navbar__nav" aria-label="Main">
           <NavItem to="/" end onClick={close} icon={Icon.home} label="Home" />
-          {COLLECTIONS.map((c) => (
+          {navCollections.map((c) => (
             <NavItem key={c.to} to={c.to} onClick={close} icon={c.icon} label={c.label} />
           ))}
           <NavItem to="/shop" onClick={close} icon={Icon.shop} label="All Products" />

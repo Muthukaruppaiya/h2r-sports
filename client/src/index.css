@@ -1494,6 +1494,21 @@ a {
   border-radius: 4px;
 }
 
+.product-card__badge--sold {
+  background: var(--gray-600);
+}
+
+.product-card--sold .product-card__img {
+  opacity: 0.55;
+}
+
+.product-card button:disabled,
+.pdp__actions button:disabled,
+.pdp-sticky__buy:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .product-card__body {
   padding: 14px;
   display: flex;

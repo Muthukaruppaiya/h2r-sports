@@ -48,7 +48,7 @@ function CollectionCard({ c, index }) {
 
 export default function CollectionGrid({ collections }) {
   const sectionRef = useRef(null);
-  const sorted = sortCollections(collections || []);
+  const sorted = sortCollections(collections || []).filter((c) => c.count !== 0);
 
   useEffect(() => {
     const root = sectionRef.current;

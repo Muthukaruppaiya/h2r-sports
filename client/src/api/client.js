@@ -15,7 +15,12 @@ const client = {
     const res = await fetch(`${BASE_URL}${endpoint}`, {
       headers: getHeaders()
     });
-    if (!res.ok) throw new Error(`GET ${endpoint} failed`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      const err = new Error(body.error || `GET ${endpoint} failed`);
+      err.response = { data: body, status: res.status };
+      throw err;
+    }
     return { data: await res.json() };
   },
   

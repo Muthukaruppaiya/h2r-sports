@@ -47,7 +47,14 @@ export default function OrderSuccess() {
     api
       .getOrder(id)
       .then(setOrder)
-      .catch(() => setError('We could not load this order. Please try again.'));
+      .catch((err) => {
+        const status = err.response?.status;
+        if (status === 401 || status === 403) {
+          setError('Log in to view this order.');
+        } else {
+          setError('We could not load this order. Please try again.');
+        }
+      });
   }, [id, order]);
 
   useEffect(() => {
@@ -61,9 +68,15 @@ export default function OrderSuccess() {
       <main className="checkout">
         <div className="container checkout__empty">
           <h1>{error}</h1>
-          <Link to="/shop" className="btn btn--primary">
-            Continue shopping
-          </Link>
+          {error.includes('Log in') ? (
+            <Link to="/login" className="btn btn--primary">
+              Sign in
+            </Link>
+          ) : (
+            <Link to="/shop" className="btn btn--primary">
+              Continue shopping
+            </Link>
+          )}
         </div>
       </main>
     );

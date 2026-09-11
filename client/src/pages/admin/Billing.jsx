@@ -296,6 +296,9 @@ export default function Billing() {
                   <div>
                     <div style={{ fontWeight: 800, color: '#0f172a' }}>{BRAND.name}</div>
                     <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Tax invoice / payment receipt</div>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                      {BRAND.phone} · {BRAND.email}
+                    </div>
                   </div>
                 </div>
                 <div style={{ textAlign: 'right', fontSize: '0.85rem', color: '#64748b' }}>

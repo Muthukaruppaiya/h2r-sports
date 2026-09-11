@@ -111,6 +111,7 @@ export default function ProductDetail() {
   };
 
   const buyNow = () => {
+    if (product.inStock === false) return;
     setBuyNowItem(buyPayload);
     navigate('/checkout');
   };
@@ -222,13 +223,18 @@ export default function ProductDetail() {
               min="1"
               max="10"
               value={qty}
-              onChange={(e) => setQty(Number(e.target.value) || 1)}
+              onChange={(e) => setQty(Math.min(10, Math.max(1, Number(e.target.value) || 1)))}
             />
           </div>
 
           <div className="pdp__actions pdp__actions--desktop">
-            <button type="button" className="btn btn--primary btn--full" onClick={buyNow}>
-              Buy now — {formatINR(size.price * qty)}
+            <button
+              type="button"
+              className="btn btn--primary btn--full"
+              onClick={buyNow}
+              disabled={product.inStock === false}
+            >
+              {product.inStock === false ? 'Sold out' : `Buy now — ${formatINR(size.price * qty)}`}
             </button>
             <button type="button" className="btn btn--whatsapp btn--full" onClick={buyWhatsApp}>
               Buy using WhatsApp
@@ -263,8 +269,13 @@ export default function ProductDetail() {
           </span>
         </div>
         <div className="pdp-sticky__actions">
-          <button type="button" className="btn btn--primary pdp-sticky__buy" onClick={buyNow}>
-            Buy Now
+          <button
+            type="button"
+            className="btn btn--primary pdp-sticky__buy"
+            onClick={buyNow}
+            disabled={product.inStock === false}
+          >
+            {product.inStock === false ? 'Sold out' : 'Buy Now'}
           </button>
           <button type="button" className="pdp-sticky__whatsapp" onClick={buyWhatsApp}>
             WhatsApp

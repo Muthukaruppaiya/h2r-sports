@@ -1,4 +1,7 @@
 import Product from '../models/Product.js';
+import { resolveProductSize } from './productSizes.js';
+
+const MAX_QTY = 10;
 
 export async function buildLineItemsFromRequest(items = []) {
   if (!Array.isArray(items) || items.length === 0) {
@@ -13,7 +16,10 @@ export async function buildLineItemsFromRequest(items = []) {
     if (!product) {
       throw Object.assign(new Error(`Unknown product: ${item.id}`), { status: 400 });
     }
-    const size = product.sizes.find((s) => s.id === item.sizeId) || product.sizes[0];
+    if (product.inStock === false) {
+      throw Object.assign(new Error(`${product.name} is currently out of stock`), { status: 400 });
+    }
+    const size = resolveProductSize(product, item);
     if (!size) {
       throw Object.assign(new Error(`No size available for ${product.name}`), { status: 400 });
     }
@@ -22,7 +28,7 @@ export async function buildLineItemsFromRequest(items = []) {
     const weightLabel = weight
       ? weight.label || `${weight.from}g – ${weight.to}g`
       : product.weight || '';
-    const qty = Math.max(1, Number(item.qty) || 1);
+    const qty = Math.min(MAX_QTY, Math.max(1, Number(item.qty) || 1));
     const lineTotal = size.price * qty;
     subtotal += lineTotal;
     lineItems.push({
@@ -49,6 +55,12 @@ export function validateCheckoutPayload({ customer, shipping }) {
   }
   if (!shipping?.addressLine1 || !shipping?.city || !shipping?.state || !shipping?.pincode) {
     throw Object.assign(new Error('Complete shipping address is required'), { status: 400 });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(customer.email || '').trim())) {
+    throw Object.assign(new Error('Enter a valid email for order updates'), { status: 400 });
+  }
+  if (/@phone\.h2rsports\.in$/i.test(String(customer.email))) {
+    throw Object.assign(new Error('Enter a real email so we can send order and delivery updates'), { status: 400 });
   }
   if (!/^[6-9]\d{9}$/.test(String(customer.phone).replace(/\s/g, ''))) {
     throw Object.assign(new Error('Enter a valid 10-digit Indian mobile number'), { status: 400 });

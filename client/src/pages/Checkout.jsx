@@ -24,6 +24,10 @@ const emptyAddress = {
   isDefault: true,
 };
 
+function isPlaceholderEmail(email) {
+  return !email || /@phone\.h2rsports\.in$/i.test(String(email));
+}
+
 function persistSession(userPayload) {
   localStorage.setItem('h2r_token', userPayload.token);
   localStorage.setItem(
@@ -77,6 +81,7 @@ export default function Checkout() {
   const [addressForm, setAddressForm] = useState(emptyAddress);
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
+  const [orderEmail, setOrderEmail] = useState('');
   const [payMethod, setPayMethod] = useState('upi');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -113,6 +118,7 @@ export default function Checkout() {
         setUser(me);
         setPhone(me.phone || '');
         setName(me.name || '');
+        if (!isPlaceholderEmail(me.email)) setOrderEmail(me.email);
         const list = me.addresses || [];
         setAddresses(list);
         const def = list.find((a) => a.isDefault) || list[0];
@@ -229,6 +235,10 @@ export default function Checkout() {
       setShowAddressForm(true);
       return;
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(orderEmail.trim()) || isPlaceholderEmail(orderEmail)) {
+      setError('Enter your email — we send order confirmed, dispatch and delivery updates there.');
+      return;
+    }
     setError('');
     setStep('summary');
   }
@@ -243,7 +253,7 @@ export default function Checkout() {
       customer: {
         name: selectedAddress.name || user.name,
         phone: selectedAddress.phone || user.phone,
-        email: user.email,
+        email: orderEmail.trim().toLowerCase(),
       },
       shipping: {
         addressLine1: selectedAddress.addressLine1,
@@ -256,6 +266,7 @@ export default function Checkout() {
         {
           id: item.id,
           sizeId: item.sizeId,
+          sizeLabel: item.sizeLabel || '',
           weightId: item.weightId || '',
           qty: item.qty,
         },
@@ -275,7 +286,7 @@ export default function Checkout() {
         preferredMethod: payMethod,
         customer: {
           name: selectedAddress.name || user.name,
-          email: user.email,
+          email: orderEmail.trim().toLowerCase(),
           contact: formatPhoneForRazorpay(selectedAddress.phone || user.phone),
         },
         productLabel: `${item.name}${item.sizeLabel ? ` · ${item.sizeLabel}` : ''}`,
@@ -308,7 +319,17 @@ export default function Checkout() {
         },
       });
 
-      await openRazorpayCheckout(options);
+      await openRazorpayCheckout(options, {
+        onPaymentFailed: (response) => {
+          const reason =
+            response?.error?.description ||
+            response?.error?.reason ||
+            'Payment failed. You can try again.';
+          setSubmitting(false);
+          setStep('summary');
+          setError(reason);
+        },
+      });
     } catch (err) {
       setError(err.response?.data?.error || 'Could not start payment. Please try again.');
       setStep('summary');
@@ -390,6 +411,16 @@ export default function Checkout() {
           <label className="ck-field">
             Full name
             <input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" />
+          </label>
+          <label className="ck-field">
+            Email for order updates
+            <input
+              required
+              type="email"
+              value={orderEmail}
+              onChange={(e) => setOrderEmail(e.target.value)}
+              placeholder="you@gmail.com"
+            />
           </label>
           <button type="submit" className="ck-btn ck-btn--primary ck-btn--block" disabled={submitting || name.trim().length < 2}>
             {submitting ? 'Creating…' : 'Continue'}
@@ -563,12 +594,27 @@ export default function Checkout() {
             )}
           </div>
 
+          <div className="ck-card">
+            <h2>Order updates</h2>
+            <label className="ck-field">
+              Email
+              <input
+                required
+                type="email"
+                value={orderEmail}
+                onChange={(e) => setOrderEmail(e.target.value)}
+                placeholder="you@gmail.com"
+              />
+            </label>
+            <p className="ck-lead">We send order confirmed, dispatch tracking and delivery mail here.</p>
+          </div>
+
           <div className="ck-footbar">
             <div>
               <span className="ck-footbar__mrp">{compareAt > total ? formatINR(compareAt) : ''}</span>
               <strong>{formatINR(payable)}</strong>
             </div>
-            <button type="button" className="ck-btn ck-btn--cta" onClick={goSummary} disabled={!selectedAddress}>
+            <button type="button" className="ck-btn ck-btn--cta" onClick={goSummary} disabled={!selectedAddress || !orderEmail.trim()}>
               Continue
             </button>
           </div>
@@ -597,6 +643,8 @@ export default function Checkout() {
                   {selectedAddress.city}, {selectedAddress.state} — {selectedAddress.pincode}
                   <br />
                   Phone: {selectedAddress.phone}
+                  <br />
+                  Email: {orderEmail}
                 </p>
               </div>
             </div>

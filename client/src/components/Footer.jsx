@@ -1,8 +1,43 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BRAND } from '../utils/india';
+import { api } from '../api/store';
+
+function isPlaceholderSocial(url) {
+  const u = String(url || '').replace(/\/$/, '');
+  return !u || u === 'https://www.facebook.com' || u === 'https://www.youtube.com';
+}
+
+const FALLBACK_SHOP_LINKS = [
+  { to: '/collections/killer-edition', label: 'Killer Edition' },
+  { to: '/collections/karrupu-edition', label: 'Karrupu Edition' },
+  { to: '/collections/stumper-edition', label: 'Stumper Edition' },
+  { to: '/collections/soft-tennis-kerala-scoop', label: 'Soft Tennis · Kerala Scoop' },
+];
 
 export default function Footer() {
   const year = new Date().getFullYear();
+  const [shopLinks, setShopLinks] = useState(FALLBACK_SHOP_LINKS);
+  const facebook = BRAND.facebook || BRAND.social?.facebook;
+  const youtube = BRAND.youtube || BRAND.social?.youtube;
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getCollections()
+      .then((data) => {
+        if (cancelled) return;
+        const list = (data.collections || []).map((c) => ({
+          to: `/collections/${c.slug}`,
+          label: c.name,
+        }));
+        if (list.length) setShopLinks(list);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <footer className="footer" id="contact">
@@ -30,23 +65,27 @@ export default function Footer() {
             <a href={BRAND.instagram} target="_blank" rel="noreferrer" aria-label="Instagram">
               <SocialIcon type="instagram" />
             </a>
-            <a href={BRAND.facebook || BRAND.social?.facebook} target="_blank" rel="noreferrer" aria-label="Facebook">
-              <SocialIcon type="facebook" />
-            </a>
-            <a href={BRAND.youtube || BRAND.social?.youtube} target="_blank" rel="noreferrer" aria-label="YouTube">
-              <SocialIcon type="youtube" />
-            </a>
+            {!isPlaceholderSocial(facebook) && (
+              <a href={facebook} target="_blank" rel="noreferrer" aria-label="Facebook">
+                <SocialIcon type="facebook" />
+              </a>
+            )}
+            {!isPlaceholderSocial(youtube) && (
+              <a href={youtube} target="_blank" rel="noreferrer" aria-label="YouTube">
+                <SocialIcon type="youtube" />
+              </a>
+            )}
           </div>
         </div>
 
         <nav className="footer__links">
           <div className="footer__col">
             <h3>Shop</h3>
-            <Link to="/collections/killer-edition">Killer Edition</Link>
-            <Link to="/collections/karrupu-edition">Karrupu Edition</Link>
-            <Link to="/collections/beast-edition">Beast Edition</Link>
-            <Link to="/collections/stumper-edition">Stumper Edition</Link>
-            <Link to="/collections/soft-tennis-kerala-scoop">Soft Tennis · Kerala Scoop</Link>
+            {shopLinks.map((link) => (
+              <Link key={link.to} to={link.to}>
+                {link.label}
+              </Link>
+            ))}
             <Link to="/shop">All Products</Link>
           </div>
           <div className="footer__col">

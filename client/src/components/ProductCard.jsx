@@ -8,8 +8,10 @@ export default function ProductCard({ product }) {
   const defaultSize = product.sizes?.[0];
   const primary = mediaUrl(product.image || product.images?.[0] || '/products/placeholders/front.svg');
   const imageCount = product.images?.length || 0;
+  const inStock = product.inStock !== false;
 
   const buyNow = () => {
+    if (!inStock) return;
     const defaultWeight = product.weights?.[0];
     const weightLabel = defaultWeight
       ? defaultWeight.label ||
@@ -20,20 +22,23 @@ export default function ProductCard({ product }) {
     setBuyNowItem({
       id: product.id,
       name: product.name,
+      image: product.images?.[0] || product.image || '',
       sizeId: defaultSize?.id || 'default',
       sizeLabel: defaultSize?.label || 'Standard',
       weightId: defaultWeight?.id || '',
       weightLabel,
       price: defaultSize?.price || product.price,
+      compareAt: product.compareAt || null,
       qty: 1,
     });
     navigate('/checkout');
   };
 
   return (
-    <article className="product-card">
+    <article className={`product-card${inStock ? '' : ' product-card--sold'}`}>
       <Link to={`/shop/${product.id}`} className="product-card__media">
         {product.badge && <span className="product-card__badge">{product.badge}</span>}
+        {!inStock && <span className="product-card__badge product-card__badge--sold">Sold out</span>}
         {imageCount > 1 && (
           <span className="product-card__pics">{Math.min(imageCount, 5)} photos</span>
         )}
@@ -58,8 +63,13 @@ export default function ProductCard({ product }) {
             <span className="product-card__compare">{formatINR(product.compareAt)}</span>
           )}
         </div>
-        <button type="button" className="btn btn--sm btn--full" onClick={buyNow}>
-          Buy now
+        <button
+          type="button"
+          className="btn btn--sm btn--full"
+          onClick={buyNow}
+          disabled={!inStock}
+        >
+          {inStock ? 'Buy now' : 'Sold out'}
         </button>
       </div>
     </article>

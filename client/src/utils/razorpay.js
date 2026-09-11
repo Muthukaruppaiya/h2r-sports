@@ -114,11 +114,13 @@ export function buildRazorpayOptions({
   };
 }
 
-export function openRazorpayCheckout(options) {
+export function openRazorpayCheckout(options, extra = {}) {
   return loadRazorpayCheckout().then((Razorpay) => {
     const rzp = new Razorpay(options);
-    rzp.on('payment.failed', () => {
-      /* user can retry in modal; dismiss handled separately */
+    rzp.on('payment.failed', (response) => {
+      if (typeof extra.onPaymentFailed === 'function') {
+        extra.onPaymentFailed(response);
+      }
     });
     rzp.open();
     return rzp;

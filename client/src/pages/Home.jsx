@@ -7,7 +7,6 @@ import StatsStrip from '../components/StatsStrip';
 import Reviews from '../components/Reviews';
 import VideoShowcase from '../components/VideoShowcase';
 import AnnouncementBar from '../components/AnnouncementBar';
-import WhatsAppStatusBar from '../components/WhatsAppStatusBar';
 import RevealOnScroll from '../components/RevealOnScroll';
 import { api } from '../api/store';
 
@@ -99,8 +98,6 @@ export default function Home() {
           </svg>
         </span>
       </section>
-
-      <WhatsAppStatusBar />
 
       <StatsStrip />
 

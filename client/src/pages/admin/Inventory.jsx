@@ -85,7 +85,7 @@ export default function Inventory() {
 
   const fetchCollections = async () => {
     try {
-      const res = await api.get('/collections');
+      const res = await api.get('/collections?all=true');
       const list = (res.data.collections || []).map((c) => ({
         id: c.id || c.slug,
         label: c.name,

@@ -49,6 +49,12 @@ Set environment variables:
 - `JWT_SECRET`
 - `PUBLIC_API_URL=https://h2r-sports.onrender.com`
 - `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` (live keys when ready)
+- `RAZORPAY_WEBHOOK_SECRET` — Razorpay Dashboard → Webhooks → `payment.captured`  
+  URL: `https://h2r-sports.onrender.com/api/payments/razorpay/webhook`
+- `SMTP_USER=h2rsports7@gmail.com`
+- `SMTP_PASS` — Gmail **App Password** (not the normal Gmail login password)
+- `STORE_EMAIL=h2rsports7@gmail.com`
+- Do **not** set `SEED_DEFAULT_ADMIN` on Render. Change the admin password if it is still the old default.
 
 Start command: `npm start` (from `server/`)
 

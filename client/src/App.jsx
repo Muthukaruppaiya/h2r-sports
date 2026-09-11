@@ -17,6 +17,7 @@ import MyOrders from './pages/MyOrders';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Policy from './pages/Policy';
+import NotFound from './pages/NotFound';
 
 // Admin Pages
 import AdminLayout from './pages/admin/AdminLayout';
@@ -68,7 +69,12 @@ export default function App() {
     isAdmin;
 
   if (isAdmin) {
-    const user = JSON.parse(localStorage.getItem('h2r_user') || '{}');
+    let user = {};
+    try {
+      user = JSON.parse(localStorage.getItem('h2r_user') || '{}');
+    } catch {
+      user = {};
+    }
     if (user.role !== 'admin') {
       return (
         <div className="auth-page auth-page--denied">
@@ -145,6 +151,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/policies/:slug" element={<Policy />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </PageShell>
       {!isCheckout && <Footer />}

@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './loadEnv.js';
 import express from 'express';
 import cors from 'cors';
 import fs from 'fs';
@@ -20,13 +20,17 @@ import PendingCheckout from './models/PendingCheckout.js';
 import { buildStatusUpdate, isValidStatus } from './utils/orderStatus.js';
 import { parseInstagramUrl } from './utils/instagram.js';
 import { buildLineItemsFromRequest, validateCheckoutPayload } from './utils/orderCheckout.js';
+import { uniquifySizes, sizesNeedRewrite } from './utils/productSizes.js';
+import { fulfillPaidCheckout, publicOrder } from './utils/orderFulfill.js';
+import { sendOrderEmail } from './utils/orderMail.js';
 import {
   getRazorpayClient,
   getRazorpayKeyId,
   isRazorpayConfigured,
-  mapRazorpayMethod,
+  isRazorpayWebhookConfigured,
   rupeesToPaise,
   verifyRazorpaySignature,
+  verifyRazorpayWebhookSignature,
 } from './utils/razorpay.js';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
@@ -117,7 +121,8 @@ function withImages(product) {
     Array.isArray(src.images) && src.images.length
       ? src.images
       : getProductImages(src.id);
-  return { ...src, images, image: images[0] };
+  const sizes = uniquifySizes(src.sizes || []);
+  return { ...src, sizes, images, image: images[0] };
 }
 
 function sanitizeProductInput(body, { isCreate = false } = {}) {
@@ -139,13 +144,15 @@ function sanitizeProductInput(body, { isCreate = false } = {}) {
   }
   if (out.inStock !== undefined) out.inStock = Boolean(out.inStock);
   if (Array.isArray(out.sizes)) {
-    out.sizes = out.sizes
-      .map((s) => ({
-        id: String(s.id || '').trim(),
-        label: String(s.label || '').trim(),
-        price: Number(s.price) || out.price || 0,
-      }))
-      .filter((s) => s.id && s.label);
+    out.sizes = uniquifySizes(
+      out.sizes
+        .map((s) => ({
+          id: String(s.id || '').trim(),
+          label: String(s.label || '').trim(),
+          price: Number(s.price) || out.price || 0,
+        }))
+        .filter((s) => s.label || s.id)
+    );
   }
   if (Array.isArray(out.weights)) {
     out.weights = out.weights
@@ -174,7 +181,12 @@ function sanitizeProductInput(body, { isCreate = false } = {}) {
 const app = express();
 app.set('trust proxy', 1);
 app.use(cors());
-app.use(express.json());
+app.use((req, res, next) => {
+  if (req.originalUrl === '/api/payments/razorpay/webhook') {
+    return express.raw({ type: 'application/json' })(req, res, next);
+  }
+  return express.json()(req, res, next);
+});
 
 // ─── Multer Config ───────────────────────────────────────────────────────────
 // Product images + marketing media go to MongoDB (survives Render restarts).
@@ -372,6 +384,16 @@ function normalizePhone(phone) {
 
 function isValidIndianPhone(phone) {
   return /^[6-9]\d{9}$/.test(normalizePhone(phone));
+}
+
+function ownsOrder(user, order) {
+  if (!user || !order) return false;
+  if (user.role === 'admin') return true;
+  const email = String(user.email || '').toLowerCase();
+  const phone = normalizePhone(user.phone);
+  const orderEmail = String(order.customer?.email || '').toLowerCase();
+  const orderPhone = normalizePhone(order.customer?.phone);
+  return Boolean((email && email === orderEmail) || (phone && phone === orderPhone));
 }
 
 function authUserPayload(user, token) {
@@ -688,12 +710,12 @@ app.get('/api/store-info', (_req, res) => {
     currency: 'INR',
     gstInclusive: true,
     freeShippingIndia: true,
-    supportPhone: '+91 93618 13878',
-    supportEmail: 'orders@h2rsports.in',
+    supportPhone: '+91 99949 78963',
+    supportEmail: 'h2rsports7@gmail.com',
     address: 'Tamil Nadu, India',
     payments: ['UPI', 'Cards', 'NetBanking'],
-    whatsapp: '919361813878',
-    whatsappLink: 'https://wa.me/919361813878',
+    whatsapp: '919994978963',
+    whatsappLink: 'https://wa.me/919994978963',
     benefits: [
       'All India Free Shipping',
       'Free premium cover',
@@ -704,8 +726,9 @@ app.get('/api/store-info', (_req, res) => {
 });
 
 // ─── Collections ──────────────────────────────────────────────────────────────
-app.get('/api/collections', async (_req, res) => {
+app.get('/api/collections', async (req, res) => {
   try {
+    const includeEmpty = String(req.query.all || '') === 'true';
     const collections = await Collection.find().sort({ sortOrder: 1, featured: -1 }).lean();
     const withCounts = await Promise.all(
       collections.map(async (col) => ({
@@ -713,7 +736,9 @@ app.get('/api/collections', async (_req, res) => {
         count: await Product.countDocuments({ collection: col.id }),
       }))
     );
-    res.json({ collections: withCounts });
+    res.json({
+      collections: includeEmpty ? withCounts : withCounts.filter((c) => c.count > 0),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -736,14 +761,38 @@ app.get('/api/products', async (req, res) => {
     const { collection, category, q, topSelling, mostLoved } = req.query;
     const filter = {};
     if (collection)              filter.collection = collection;
-    if (category && category !== 'All') filter.category = category;
     if (topSelling === 'true')   filter.topSelling = true;
     if (mostLoved  === 'true')   filter.mostLoved  = true;
+
+    const familyByLabel = {
+      'hard tennis': 'hard-tennis',
+      'soft tennis': 'soft-tennis',
+      season: 'season',
+    };
+    const requestedCategory = String(category || '').trim();
+    const family = familyByLabel[requestedCategory.toLowerCase()];
+    if (family) {
+      const ids = await Collection.find({ family }).distinct('id');
+      if (family === 'season') {
+        filter.$or = [{ collection: { $in: ids } }, { category: /season/i }];
+      } else {
+        filter.collection = { $in: ids };
+      }
+    } else if (requestedCategory && requestedCategory !== 'All') {
+      filter.category = requestedCategory;
+    }
+
     if (q) {
-      const term = new RegExp(String(q), 'i');
-      filter.$or = [
-        { name: term }, { tagline: term }, { willow: term }, { category: term },
-      ];
+      const term = new RegExp(String(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      const textClause = {
+        $or: [{ name: term }, { tagline: term }, { willow: term }, { category: term }],
+      };
+      if (filter.$or) {
+        filter.$and = [{ $or: filter.$or }, textClause];
+        delete filter.$or;
+      } else {
+        Object.assign(filter, textClause);
+      }
     }
     const products = (await Product.find(filter).lean()).map(withImages);
     res.json({ total: products.length, currency: 'INR', products });
@@ -1043,15 +1092,6 @@ app.put('/api/admin/notifications/:id/read', protect, admin, async (req, res) =>
 });
 
 // ─── Orders / Razorpay ─────────────────────────────────────────────────────────
-function publicOrder(orderDoc) {
-  const order = orderDoc?.toObject ? orderDoc.toObject() : orderDoc;
-  if (!order) return null;
-  return {
-    ...order,
-    id: order.orderId,
-  };
-}
-
 app.post('/api/payments/razorpay/create', async (req, res) => {
   try {
     if (!isRazorpayConfigured()) {
@@ -1064,13 +1104,12 @@ app.post('/api/payments/razorpay/create', async (req, res) => {
     const validated = validateCheckoutPayload({ customer, shipping });
     const { lineItems, subtotal, shippingFee, total } = await buildLineItemsFromRequest(items);
 
-    if (total < 1) {
-      return res.status(400).json({ error: 'Order total must be at least ₹1' });
+    const amountPaise = rupeesToPaise(total);
+    if (!Number.isFinite(amountPaise) || amountPaise < 100) {
+      return res.status(400).json({ error: 'Order total must be at least ₹1 (100 paise)' });
     }
 
-    // Reserved shop order id — Order document is created ONLY after payment success
     const orderId = makeOrderId();
-    const amountPaise = rupeesToPaise(total);
     const razorpay = getRazorpayClient();
     const rzpOrder = await razorpay.orders.create({
       amount: amountPaise,
@@ -1109,7 +1148,8 @@ app.post('/api/payments/razorpay/create', async (req, res) => {
       razorpayOrderId: rzpOrder.id,
     });
   } catch (err) {
-    const status = err.status || 500;
+    const rzpStatus = Number(err.statusCode || err.status) || 0;
+    const status = rzpStatus === 401 ? 401 : err.status || 500;
     console.error('Razorpay create error:', err);
     res.status(status).json({ error: err.message || 'Could not start payment' });
   }
@@ -1128,17 +1168,6 @@ app.post('/api/payments/razorpay/verify', async (req, res) => {
       return res.status(400).json({ error: 'Missing payment verification fields' });
     }
 
-    // Already placed (retry / double callback)
-    const existingPaid = await Order.findOne({
-      $or: [
-        { orderId, paymentStatus: 'paid' },
-        { razorpayPaymentId, paymentStatus: 'paid' },
-      ],
-    });
-    if (existingPaid) {
-      return res.json({ ok: true, order: publicOrder(existingPaid) });
-    }
-
     const valid = verifyRazorpaySignature({
       razorpayOrderId,
       razorpayPaymentId,
@@ -1148,107 +1177,74 @@ app.post('/api/payments/razorpay/verify', async (req, res) => {
       return res.status(400).json({ error: 'Payment verification failed' });
     }
 
-    const draft = await PendingCheckout.findOne({ orderId, razorpayOrderId });
-    if (!draft) {
-      return res.status(404).json({
-        error: 'Checkout session expired or not found. If money was deducted, contact support with your payment ID.',
-      });
-    }
-
-    let method = 'razorpay';
-    let paymentDetails = {};
-    try {
-      const payment = await getRazorpayClient().payments.fetch(razorpayPaymentId);
-      if (payment.status && !['authorized', 'captured'].includes(payment.status)) {
-        return res.status(400).json({ error: `Payment not successful (${payment.status})` });
-      }
-      method = mapRazorpayMethod(payment.method);
-      paymentDetails = {
-        method: payment.method,
-        bank: payment.bank || '',
-        wallet: payment.wallet || '',
-        vpa: payment.vpa || '',
-        cardLast4: payment.card?.last4 || '',
-        cardNetwork: payment.card?.network || '',
-        email: payment.email || '',
-        contact: payment.contact || '',
-      };
-    } catch (fetchErr) {
-      console.warn('Razorpay payment fetch skipped:', fetchErr.message);
-    }
-
-    const now = new Date();
-    const order = await Order.create({
-      orderId: draft.orderId,
-      status: 'ordered',
-      paymentStatus: 'paid',
-      paymentMethod: method,
+    const { order } = await fulfillPaidCheckout({
+      orderId,
       razorpayOrderId,
       razorpayPaymentId,
-      paymentMeta: {
-        gateway: 'razorpay',
-        razorpayOrderId,
-        razorpayPaymentId,
-        razorpaySignature,
-        ...paymentDetails,
-        paidAt: now.toISOString(),
-      },
-      statusTimestamps: {
-        orderedAt: now,
-        paidAt: now,
-        confirmedAt: now,
-      },
-      statusHistory: [
-        {
-          to: 'ordered',
-          changedAt: now,
-          changedBy: 'System',
-          note: `Order placed after Razorpay payment (${razorpayPaymentId})`,
-        },
-      ],
-      customer: draft.customer,
-      shipping: draft.shipping,
-      items: draft.items,
-      currency: draft.currency || 'INR',
-      subtotal: draft.subtotal,
-      shippingFee: draft.shippingFee || 0,
-      total: draft.total,
+      razorpaySignature,
+      changedBy: 'Checkout',
     });
-
-    await PendingCheckout.deleteOne({ _id: draft._id });
-
-    // Best-effort admin alert — never let a notification failure block checkout.
-    try {
-      const place = [draft.shipping?.city, draft.shipping?.state].filter(Boolean).join(', ');
-      await Notification.create({
-        type: 'order',
-        title: 'New order placed',
-        message: `${draft.customer?.name || 'A customer'} placed an order${
-          place ? ` from ${place}` : ''
-        } — ${order.currency || 'INR'} ${Number(order.total || 0).toLocaleString('en-IN')}`,
-        orderId: order.orderId,
-        meta: {
-          customerName: draft.customer?.name || '',
-          customerPhone: draft.customer?.phone || '',
-          city: draft.shipping?.city || '',
-          state: draft.shipping?.state || '',
-          total: order.total,
-          paymentMethod: order.paymentMethod,
-        },
-      });
-    } catch (notifyErr) {
-      console.warn('Order notification skipped:', notifyErr.message);
-    }
 
     res.status(201).json({ ok: true, order: publicOrder(order) });
   } catch (err) {
-    // Unique orderId race on double-submit
     if (err?.code === 11000) {
       const again = await Order.findOne({ orderId: req.body?.orderId, paymentStatus: 'paid' });
       if (again) return res.json({ ok: true, order: publicOrder(again) });
     }
+    const status = err.status || 500;
     console.error('Razorpay verify error:', err);
-    res.status(500).json({ error: err.message || 'Payment verification failed' });
+    res.status(status).json({ error: err.message || 'Payment verification failed' });
+  }
+});
+
+app.post('/api/payments/razorpay/webhook', async (req, res) => {
+  try {
+    if (!isRazorpayWebhookConfigured()) {
+      console.warn('Razorpay webhook received but RAZORPAY_WEBHOOK_SECRET is not set');
+      return res.status(503).json({ error: 'Webhook secret is not configured' });
+    }
+    const signature = req.get('x-razorpay-signature') || '';
+    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {}));
+    if (!verifyRazorpayWebhookSignature(rawBody, signature)) {
+      return res.status(400).json({ error: 'Invalid webhook signature' });
+    }
+
+    const event = JSON.parse(rawBody.toString('utf8'));
+    const type = event?.event || '';
+    if (type !== 'payment.captured') {
+      return res.json({ ok: true, ignored: type });
+    }
+
+    const payment = event?.payload?.payment?.entity || {};
+    const razorpayPaymentId = payment.id || '';
+    const razorpayOrderId = payment.order_id || '';
+    const h2rOrderId = payment.notes?.h2rOrderId || '';
+
+    if (!razorpayOrderId) {
+      return res.json({ ok: true, skipped: 'no order id' });
+    }
+
+    const { order, created } = await fulfillPaidCheckout({
+      orderId: h2rOrderId || undefined,
+      razorpayOrderId,
+      razorpayPaymentId: razorpayPaymentId || payment.payment_id,
+      razorpaySignature: signature,
+      changedBy: 'Razorpay webhook',
+      note: `Order placed from Razorpay webhook (${type})`,
+    });
+
+    res.json({ ok: true, created, orderId: order.orderId });
+  } catch (err) {
+    if (err?.code === 11000) {
+      return res.json({ ok: true, created: false });
+    }
+    if (err.status === 404) {
+      // Payment for an unknown draft — acknowledge so Razorpay does not retry forever.
+      console.warn('Razorpay webhook: no pending checkout', err.message);
+      return res.json({ ok: true, skipped: 'no pending checkout' });
+    }
+    console.error('Razorpay webhook error:', err);
+    res.status(err.status || 500).json({ error: err.message || 'Webhook failed' });
   }
 });
 
@@ -1262,8 +1258,11 @@ app.post('/api/orders', async (_req, res) => {
 app.get('/api/orders/my-orders', protect, async (req, res) => {
   try {
     const orders = await Order.find({
-      'customer.email': req.user.email,
       paymentStatus: 'paid',
+      $or: [
+        { 'customer.email': req.user.email },
+        ...(req.user.phone ? [{ 'customer.phone': req.user.phone }] : []),
+      ],
     })
       .sort({ createdAt: -1 })
       .lean();
@@ -1273,10 +1272,13 @@ app.get('/api/orders/my-orders', protect, async (req, res) => {
   }
 });
 
-app.get('/api/orders/:id', async (req, res) => {
+app.get('/api/orders/:id', protect, async (req, res) => {
   try {
     const order = await Order.findOne({ orderId: req.params.id, paymentStatus: 'paid' }).lean();
     if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (!ownsOrder(req.user, order)) {
+      return res.status(403).json({ error: 'Not authorized to view this order' });
+    }
     res.json(publicOrder(order));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1325,6 +1327,16 @@ app.put('/api/admin/orders/:id/status', protect, admin, async (req, res) => {
     if (updates.courier) currentOrder.courier = updates.courier;
     currentOrder.statusHistory.push(historyEntry);
     await currentOrder.save();
+
+    const mailEvent = {
+      packed: 'packed',
+      shipped: 'shipped',
+      delivered: 'delivered',
+      cancelled: 'cancelled',
+    }[currentOrder.status];
+    if (mailEvent) {
+      sendOrderEmail(currentOrder, mailEvent).catch(() => {});
+    }
 
     res.json({ ok: true, order: currentOrder.toObject() });
   } catch (err) {
@@ -2009,15 +2021,36 @@ async function start() {
     await mongoose.connect(MONGO_URI);
     console.log(`✓ MongoDB connected → ${MONGO_URI}`);
 
-    const adminExists = await User.findOne({ email: 'admin@h2rsports.in' });
-    if (!adminExists) {
-      await User.create({
-        name: 'Admin',
-        email: 'admin@h2rsports.in',
-        password: 'admin123',
-        role: 'admin'
-      });
-      console.log('✓ Default Admin created (admin@h2rsports.in / admin123)');
+    if (process.env.NODE_ENV === 'production' && JWT_SECRET === 'h2r_sports_super_secret') {
+      console.error('✗ JWT_SECRET is still the default. Set a long random JWT_SECRET on Render before taking live traffic.');
+    }
+
+    const products = await Product.find();
+    let sizeFixes = 0;
+    for (const product of products) {
+      const next = uniquifySizes(product.sizes || []);
+      if (sizesNeedRewrite(product.sizes || [], next)) {
+        product.sizes = next;
+        await product.save();
+        sizeFixes += 1;
+      }
+    }
+    if (sizeFixes) {
+      console.log(`✓ Unique size ids written on ${sizeFixes} product(s)`);
+    }
+
+    const isProd = process.env.NODE_ENV === 'production';
+    if (!isProd || process.env.SEED_DEFAULT_ADMIN === 'true') {
+      const adminExists = await User.findOne({ email: 'admin@h2rsports.in' });
+      if (!adminExists) {
+        await User.create({
+          name: 'Admin',
+          email: 'admin@h2rsports.in',
+          password: 'admin123',
+          role: 'admin',
+        });
+        console.log('✓ Default Admin created (admin@h2rsports.in) — change this password immediately');
+      }
     }
 
     app.listen(PORT, () => {
