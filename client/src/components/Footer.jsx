@@ -92,8 +92,10 @@ export default function Footer() {
             <h3>Policies</h3>
             <Link to="/policies/terms">Terms &amp; Policies</Link>
             <Link to="/policies/returns">No Refund Policy</Link>
+            <Link to="/policies/refund-cancellation">Refund &amp; Cancellation</Link>
             <Link to="/policies/shipping">Shipping Policy</Link>
             <Link to="/policies/privacy">Privacy Policy</Link>
+            <Link to="/cookie-preferences">Cookie Preferences</Link>
           </div>
           <div className="footer__col">
             <h3>Help</h3>
@@ -121,7 +123,9 @@ export default function Footer() {
         <div className="footer__legal">
           <Link to="/policies/terms">Terms &amp; Policies</Link>
           <Link to="/policies/returns">No Refund</Link>
+          <Link to="/policies/refund-cancellation">Cancellation</Link>
           <Link to="/policies/privacy">Privacy</Link>
+          <Link to="/cookie-preferences">Cookies</Link>
         </div>
       </div>
     </footer>

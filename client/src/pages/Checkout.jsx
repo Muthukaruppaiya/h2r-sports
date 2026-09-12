@@ -304,12 +304,17 @@ export default function Checkout() {
               state: { order: verified.order, justPaid: true },
             });
           } catch (verifyErr) {
-            setError(
-              verifyErr.response?.data?.error ||
-                'Payment received but verification failed. Contact support with your payment ID.'
-            );
-            setStep('summary');
             setSubmitting(false);
+            navigate('/payment-failed', {
+              state: {
+                verificationFailed: true,
+                paymentId: response.razorpay_payment_id || '',
+                orderRef: data.orderId || '',
+                amount: payable,
+                productLabel: `${item.name}${item.sizeLabel ? ` · ${item.sizeLabel}` : ''}`,
+                reason: verifyErr.response?.data?.error || '',
+              },
+            });
           }
         },
         onDismiss: () => {
@@ -326,8 +331,14 @@ export default function Checkout() {
             response?.error?.reason ||
             'Payment failed. You can try again.';
           setSubmitting(false);
-          setStep('summary');
-          setError(reason);
+          navigate('/payment-failed', {
+            state: {
+              reason,
+              orderRef: data.orderId || '',
+              amount: payable,
+              productLabel: `${item.name}${item.sizeLabel ? ` · ${item.sizeLabel}` : ''}`,
+            },
+          });
         },
       });
     } catch (err) {

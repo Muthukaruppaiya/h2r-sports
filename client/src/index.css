@@ -5950,6 +5950,48 @@ body:has(.pdp-sticky) .float-dock {
 .acct-dl__email {
   font-size: 0.88rem;
   font-weight: 650;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.acct-verify-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+
+.acct-verify-badge--ok {
+  background: #ecfdf3;
+  color: #16a34a;
+  border: 1px solid #bbf7d0;
+}
+
+.acct-verify-badge--warn {
+  background: #fff8e1;
+  color: #92650a;
+  border: 1px solid #ffe082;
+}
+
+.acct-verify-resend {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--accent, #2c7be5);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.acct-verify-sent {
+  font-weight: 650;
 }
 
 .acct-muted {
@@ -6231,6 +6273,344 @@ body:has(.pdp-sticky) .float-dock {
     flex-shrink: 0;
     border-radius: 999px;
   }
+}
+
+/* ——— Cookie preferences page ——— */
+.cookie-prefs__list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 20px 0 24px;
+}
+
+.cookie-prefs__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--gray-100);
+  border-radius: 12px;
+  background: var(--gray-50);
+}
+
+.cookie-prefs__row-text strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.98rem;
+  color: var(--navy);
+}
+
+.cookie-prefs__row-text p {
+  margin: 6px 0 0;
+  font-size: 0.85rem;
+  color: var(--gray-600);
+  line-height: 1.55;
+  max-width: 52ch;
+}
+
+.cookie-prefs__badge {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #16a34a;
+  background: #ecfdf3;
+  border: 1px solid #bbf7d0;
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+
+.cookie-prefs__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.cookie-prefs__ghost {
+  background: var(--white);
+  border: 1px solid var(--gray-200, #dde3ea);
+  color: var(--navy);
+}
+
+.cookie-prefs__saved {
+  margin: 14px 0 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #16a34a;
+}
+
+.cookie-toggle {
+  flex-shrink: 0;
+  cursor: pointer;
+  display: inline-flex;
+}
+
+.cookie-toggle.is-locked {
+  cursor: default;
+}
+
+.cookie-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.cookie-toggle__track {
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  background: #cbd5e1;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  transition: background 0.2s ease;
+}
+
+.cookie-toggle.is-on .cookie-toggle__track {
+  background: var(--accent, #2c7be5);
+}
+
+.cookie-toggle.is-locked .cookie-toggle__track {
+  background: #94a3b8;
+}
+
+.cookie-toggle__thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.3);
+  transition: transform 0.2s ease;
+}
+
+.cookie-toggle.is-on .cookie-toggle__thumb {
+  transform: translateX(20px);
+}
+
+/* ——— Cookie consent banner ——— */
+.cookie-banner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1100;
+  padding: 14px 16px max(14px, env(safe-area-inset-bottom));
+  background: rgba(15, 23, 42, 0.97);
+  color: #e2e8f0;
+  animation: cookie-banner-in 0.35s var(--ease-out, ease);
+}
+
+@keyframes cookie-banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.cookie-banner__inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.cookie-banner__text {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  max-width: 62ch;
+  color: #cbd5e1;
+}
+
+.cookie-banner__text a {
+  color: #93c5fd;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.cookie-banner__actions {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.cookie-banner__btn {
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cookie-banner__btn--ghost {
+  background: transparent;
+  border-color: rgba(226, 232, 240, 0.35);
+  color: #e2e8f0;
+}
+
+.cookie-banner__btn--primary {
+  background: var(--accent, #c8102e);
+  color: #fff;
+}
+
+@media (max-width: 640px) {
+  .cookie-banner__inner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cookie-banner__actions {
+    justify-content: stretch;
+  }
+
+  .cookie-banner__btn {
+    flex: 1;
+  }
+}
+
+/* ——— Payment failed page ——— */
+.pay-failed {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(2rem, env(safe-area-inset-top)) 1rem 3rem;
+  background:
+    radial-gradient(circle at top right, rgba(220, 38, 38, 0.08), transparent 42%),
+    linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+}
+
+.pay-failed__wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.pay-failed__card {
+  width: min(100%, 480px);
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: clamp(1.5rem, 5vw, 2.25rem);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+  text-align: center;
+}
+
+.pay-failed__icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+}
+
+.pay-failed__icon.is-error {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.pay-failed__icon.is-warn {
+  background: #fff8e1;
+  color: #b45309;
+}
+
+.pay-failed__title {
+  margin: 0 0 10px;
+  font-size: clamp(1.25rem, 4vw, 1.5rem);
+  color: var(--navy, #0f172a);
+}
+
+.pay-failed__lead {
+  margin: 0 0 18px;
+  color: #64748b;
+  line-height: 1.6;
+  font-size: 0.95rem;
+}
+
+.pay-failed__meta {
+  text-align: left;
+  background: var(--gray-50);
+  border: 1px solid var(--gray-100);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin: 0 0 20px;
+}
+
+.pay-failed__meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 0.88rem;
+  border-bottom: 1px dashed var(--gray-100);
+}
+
+.pay-failed__meta-row:last-child {
+  border-bottom: none;
+}
+
+.pay-failed__meta-row span {
+  color: #64748b;
+}
+
+.pay-failed__meta-row strong {
+  color: var(--navy, #0f172a);
+  word-break: break-all;
+  text-align: right;
+}
+
+.pay-failed__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pay-failed__btn {
+  width: 100%;
+}
+
+.pay-failed__btn--whatsapp {
+  background: #25d366;
+  color: #fff;
+  border: none;
+}
+
+.pay-failed__link {
+  margin-top: 4px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #64748b;
+}
+
+/* ——— Login "forgot password" link ——— */
+.auth-page__field span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.auth-page__forgot {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--accent, #2c7be5);
+  text-transform: none;
 }
 
 /* Smooth page / UX polish */

@@ -34,6 +34,9 @@ import {
 } from './utils/razorpay.js';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
+import crypto from 'crypto';
+import { isDeliverableEmail } from './utils/orderMail.js';
+import { sendVerificationEmail, sendPasswordResetEmail } from './utils/authMail.js';
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 const __filename = fileURLToPath(import.meta.url);
@@ -73,6 +76,32 @@ function publicApiOrigin(req) {
     process.env.PUBLIC_API_URL ||
     `${req.get('x-forwarded-proto') || req.protocol}://${req.get('host')}`
   ).replace(/\/$/, '');
+}
+
+/** Where the React app is hosted — used to build password-reset / verify-email links. */
+function resolveClientOrigin(req) {
+  if (process.env.CLIENT_URL) return process.env.CLIENT_URL.replace(/\/$/, '');
+  const origin = req.get('origin') || req.get('referer') || '';
+  if (origin) {
+    try {
+      const u = new URL(origin);
+      return `${u.protocol}//${u.host}`;
+    } catch {
+      // fall through to default below
+    }
+  }
+  return 'http://localhost:5173';
+}
+
+/** Random token for email links — only the SHA-256 hash is stored server-side. */
+function issueToken() {
+  const raw = crypto.randomBytes(32).toString('hex');
+  const hash = crypto.createHash('sha256').update(raw).digest('hex');
+  return { raw, hash };
+}
+
+function hashToken(raw) {
+  return crypto.createHash('sha256').update(String(raw || '')).digest('hex');
 }
 
 function storeBufferInGridFS(buffer, { filename, contentType }) {
@@ -401,6 +430,7 @@ function authUserPayload(user, token) {
     _id: user._id,
     name: user.name,
     email: user.email,
+    emailVerified: !!user.emailVerified,
     phone: user.phone || '',
     role: user.role,
     token,
@@ -439,6 +469,17 @@ app.post('/api/auth/register', async (req, res) => {
       phone: cleanPhone,
     });
     const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '30d' });
+
+    // Best-effort verification email — never blocks account creation.
+    if (isDeliverableEmail(user.email)) {
+      const { raw, hash } = issueToken();
+      user.emailVerifyTokenHash = hash;
+      user.emailVerifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      await user.save();
+      const verifyUrl = `${resolveClientOrigin(req)}/verify-email/${raw}`;
+      sendVerificationEmail(user, verifyUrl).catch(() => {});
+    }
+
     res.status(201).json(authUserPayload(user, token));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -537,10 +578,119 @@ app.get('/api/auth/me', protect, (req, res) => {
     _id: req.user._id,
     name: req.user.name,
     email: req.user.email,
+    emailVerified: !!req.user.emailVerified,
     phone: req.user.phone,
     role: req.user.role,
     addresses: publicAddresses(req.user),
   });
+});
+
+/** Resend the verification link for the logged-in user's own email. */
+app.post('/api/auth/resend-verification', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!isDeliverableEmail(user.email)) {
+      return res.status(400).json({ error: 'No email address on file to verify' });
+    }
+    if (user.emailVerified) {
+      return res.json({ ok: true, alreadyVerified: true });
+    }
+    const { raw, hash } = issueToken();
+    user.emailVerifyTokenHash = hash;
+    user.emailVerifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await user.save();
+    const verifyUrl = `${resolveClientOrigin(req)}/verify-email/${raw}`;
+    await sendVerificationEmail(user, verifyUrl);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Confirm an email address via the token from the verification email link. */
+app.post('/api/auth/verify-email', async (req, res) => {
+  try {
+    const raw = String(req.body?.token || '').trim();
+    if (!raw) return res.status(400).json({ error: 'Missing verification token' });
+
+    const hash = hashToken(raw);
+    const user = await User.findOne({
+      emailVerifyTokenHash: hash,
+      emailVerifyExpires: { $gt: new Date() },
+    }).select('+emailVerifyTokenHash +emailVerifyExpires');
+
+    if (!user) {
+      return res.status(400).json({ error: 'This verification link is invalid or has expired.' });
+    }
+
+    user.emailVerified = true;
+    user.emailVerifyTokenHash = '';
+    user.emailVerifyExpires = undefined;
+    await user.save();
+
+    res.json({ ok: true, email: user.email });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Start a password reset — always responds success-like to avoid leaking which emails exist. */
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const generic = {
+      ok: true,
+      message: 'If an account exists for that email, a reset link has been sent.',
+    };
+    if (!email) return res.json(generic);
+
+    const user = await User.findOne({ email });
+    if (!user || !isDeliverableEmail(user.email)) return res.json(generic);
+
+    const { raw, hash } = issueToken();
+    user.resetPasswordTokenHash = hash;
+    user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000);
+    await user.save();
+
+    const resetUrl = `${resolveClientOrigin(req)}/reset-password/${raw}`;
+    sendPasswordResetEmail(user, resetUrl).catch(() => {});
+
+    res.json(generic);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Complete a password reset using the token from the reset email link. */
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const raw = String(req.body?.token || '').trim();
+    const password = String(req.body?.password || '');
+    if (!raw) return res.status(400).json({ error: 'Missing reset token' });
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    const hash = hashToken(raw);
+    const user = await User.findOne({
+      resetPasswordTokenHash: hash,
+      resetPasswordExpires: { $gt: new Date() },
+    }).select('+resetPasswordTokenHash +resetPasswordExpires');
+
+    if (!user) {
+      return res.status(400).json({ error: 'This reset link is invalid or has expired.' });
+    }
+
+    user.password = password; // pre-save hook re-hashes
+    user.resetPasswordTokenHash = '';
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '30d' });
+    res.json(authUserPayload(user, token));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.put('/api/auth/profile', protect, async (req, res) => {

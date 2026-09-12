@@ -49,6 +49,13 @@ const TABS = [
   },
 ];
 
+function isDeliverableEmail(email) {
+  const value = String(email || '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return false;
+  if (/@phone\.h2rsports\.in$/.test(value)) return false;
+  return true;
+}
+
 const emptyAddress = {
   label: 'Home',
   name: '',
@@ -69,6 +76,7 @@ export default function MyOrders() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState({ name: '', phone: '' });
   const [profileUpdating, setProfileUpdating] = useState(false);
+  const [verifyStatus, setVerifyStatus] = useState('idle'); // idle | sending | sent | error
   const [expandedId, setExpandedId] = useState(null);
   const [trackingId, setTrackingId] = useState(null);
   const [addresses, setAddresses] = useState([]);
@@ -152,6 +160,16 @@ export default function MyOrders() {
     localStorage.removeItem('h2r_token');
     localStorage.removeItem('h2r_user');
     navigate('/login');
+  };
+
+  const handleResendVerification = async () => {
+    setVerifyStatus('sending');
+    try {
+      await storeApi.resendVerification();
+      setVerifyStatus('sent');
+    } catch {
+      setVerifyStatus('error');
+    }
   };
 
   const handleProfileSubmit = async (e) => {
@@ -567,7 +585,30 @@ export default function MyOrders() {
                   </div>
                   <div>
                     <dt>Email</dt>
-                    <dd className="acct-dl__email">{profile?.email}</dd>
+                    <dd className="acct-dl__email">
+                      {profile?.email}
+                      {isDeliverableEmail(profile?.email) && (
+                        profile?.emailVerified ? (
+                          <span className="acct-verify-badge acct-verify-badge--ok">✓ Verified</span>
+                        ) : (
+                          <span className="acct-verify-badge acct-verify-badge--warn">
+                            Not verified
+                            {verifyStatus === 'sent' ? (
+                              <span className="acct-verify-sent"> · Link sent, check your inbox</span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="acct-verify-resend"
+                                onClick={handleResendVerification}
+                                disabled={verifyStatus === 'sending'}
+                              >
+                                {verifyStatus === 'sending' ? 'Sending…' : 'Resend link'}
+                              </button>
+                            )}
+                          </span>
+                        )
+                      )}
+                    </dd>
                   </div>
                 </dl>
               )}

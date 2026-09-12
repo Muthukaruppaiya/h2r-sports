@@ -93,6 +93,26 @@ export const api = {
     return res.data;
   },
 
+  async forgotPassword(email) {
+    const res = await client.post('/auth/forgot-password', { email });
+    return res.data;
+  },
+
+  async resetPassword({ token, password }) {
+    const res = await client.post('/auth/reset-password', { token, password });
+    return res.data;
+  },
+
+  async verifyEmail(token) {
+    const res = await client.post('/auth/verify-email', { token });
+    return res.data;
+  },
+
+  async resendVerification() {
+    const res = await client.post('/auth/resend-verification');
+    return res.data;
+  },
+
   async getOrder(id) {
     const res = await client.get(`/orders/${id}`);
     return res.data;

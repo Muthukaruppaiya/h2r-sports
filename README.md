@@ -51,8 +51,9 @@ Set environment variables:
 - `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` (live keys when ready)
 - `RAZORPAY_WEBHOOK_SECRET` — Razorpay Dashboard → Webhooks → `payment.captured`  
   URL: `https://h2r-sports.onrender.com/api/payments/razorpay/webhook`
-- `SMTP_USER` / `SMTP_PASS` — **your** sending mailbox (your Gmail App Password, Hostinger email, or Brevo). Not the client Gmail.
+- `SMTP_USER` / `SMTP_PASS` — **your** sending mailbox (your Gmail App Password, Hostinger email, or Brevo). Not the client Gmail. Required for order emails **and** the password-reset / verify-email links below to actually deliver — without it, links are only logged to the server console.
 - `STORE_EMAIL=h2rsports7@gmail.com` — client inbox (BCC + Reply-To only)
+- `CLIENT_URL=https://<your-netlify-domain>` — used to build password-reset / verify-email links. Falls back to the request's Origin header if unset, but set it explicitly on Render so emails always link to the live site.
 - Do **not** set `SEED_DEFAULT_ADMIN` on Render. Change the admin password if it is still the old default.
 
 Start command: `npm start` (from `server/`)
@@ -78,4 +79,12 @@ Add your **Netlify domain** under Website / Checkout allowed domains, and enable
 | `/shop/:id` | Product detail |
 | `/checkout` | Razorpay prepaid checkout |
 | `/order/:id` | Order success |
+| `/payment-failed` | Payment failed / not-confirmed recovery page |
+| `/login` / `/register` | Auth |
+| `/forgot-password` | Request a password reset email |
+| `/reset-password/:token` | Set a new password (from email link) |
+| `/verify-email/:token` | Confirm an email address (from email link) |
+| `/my-orders` | Customer account — orders, buy again, profile (resend verification here) |
+| `/policies/terms` \| `/returns` \| `/refund-cancellation` \| `/shipping` \| `/privacy` | Policy pages |
+| `/cookie-preferences` | Cookie consent preferences |
 | `/admin` | Admin (inventory, orders, marketing, billing, reports) |

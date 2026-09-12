@@ -24,6 +24,13 @@ const UserSchema = new mongoose.Schema(
     phone: { type: String, default: '', index: true },
     role: { type: String, enum: ['customer', 'admin'], default: 'customer' },
     addresses: { type: [AddressSchema], default: [] },
+
+    emailVerified: { type: Boolean, default: false },
+    emailVerifyTokenHash: { type: String, default: '', select: false },
+    emailVerifyExpires: { type: Date, select: false },
+
+    resetPasswordTokenHash: { type: String, default: '', select: false },
+    resetPasswordExpires: { type: Date, select: false },
   },
   { timestamps: true }
 );

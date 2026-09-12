@@ -16,7 +16,13 @@ import OrderSuccess from './pages/OrderSuccess';
 import MyOrders from './pages/MyOrders';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
+import VerifyEmail from './pages/VerifyEmail';
+import PaymentFailed from './pages/PaymentFailed';
 import Policy from './pages/Policy';
+import CookiePreferences from './pages/CookiePreferences';
+import CookieConsent from './components/CookieConsent';
 import NotFound from './pages/NotFound';
 
 // Admin Pages
@@ -150,12 +156,18 @@ export default function App() {
           <Route path="/my-orders" element={<MyOrders />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password/:token" element={<ResetPassword />} />
+          <Route path="/verify-email/:token" element={<VerifyEmail />} />
+          <Route path="/payment-failed" element={<PaymentFailed />} />
           <Route path="/policies/:slug" element={<Policy />} />
+          <Route path="/cookie-preferences" element={<CookiePreferences />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </PageShell>
       {!isCheckout && <Footer />}
       {!isCheckout && <FloatDock showVideo={!hideVideo} />}
+      {!isCheckout && <CookieConsent />}
     </>
   );
 }

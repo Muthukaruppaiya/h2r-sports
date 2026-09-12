@@ -1,54 +1,12 @@
-import nodemailer from 'nodemailer';
+import { STORE_EMAIL, STORE_PHONE, isDeliverableEmail, isMailConfigured, escapeHtml, sendMail } from './mailer.js';
 
-const STORE_EMAIL = process.env.STORE_EMAIL || 'h2rsports7@gmail.com';
-const STORE_PHONE = process.env.STORE_PHONE || '+91 99949 78963';
-const SMTP_USER = process.env.SMTP_USER || '';
-const SMTP_PASS = process.env.SMTP_PASS || '';
-const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER;
-const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
-const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
-
-const PLACEHOLDER_EMAIL = /@phone\.h2rsports\.in$/i;
-
-let transporter = null;
-
-export function isDeliverableEmail(email) {
-  const value = String(email || '').trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return false;
-  if (PLACEHOLDER_EMAIL.test(value)) return false;
-  return true;
-}
-
-export function isMailConfigured() {
-  return Boolean(SMTP_USER && SMTP_PASS);
-}
-
-function getTransporter() {
-  if (!isMailConfigured()) return null;
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
-      host: SMTP_HOST,
-      port: SMTP_PORT,
-      secure: SMTP_PORT === 465,
-      auth: { user: SMTP_USER, pass: SMTP_PASS },
-    });
-  }
-  return transporter;
-}
+export { isDeliverableEmail, isMailConfigured };
 
 function rupees(amount) {
   return `Rs. ${Number(amount || 0).toLocaleString('en-IN', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
-}
-
-function escapeHtml(value) {
-  return String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 function itemsHtml(order) {
@@ -165,9 +123,7 @@ function buildMessage(order, event) {
 export async function sendOrderEmail(orderDoc, event) {
   const order = orderDoc?.toObject ? orderDoc.toObject() : orderDoc;
   if (!order) return { sent: false, reason: 'no-order' };
-
-  const mailer = getTransporter();
-  if (!mailer) {
+  if (!isMailConfigured()) {
     console.warn('Order email skipped: set SMTP_USER and SMTP_PASS on the sending mailbox (not the client Gmail).');
     return { sent: false, reason: 'not-configured' };
   }
@@ -180,19 +136,5 @@ export async function sendOrderEmail(orderDoc, event) {
   const to = toCustomer ? customerEmail : STORE_EMAIL;
   const bcc = toCustomer && STORE_EMAIL.toLowerCase() !== customerEmail.toLowerCase() ? STORE_EMAIL : undefined;
 
-  try {
-    await mailer.sendMail({
-      from: `H2R Sports <${SMTP_FROM}>`,
-      to,
-      bcc,
-      replyTo: STORE_EMAIL,
-      subject: message.subject,
-      text: message.text,
-      html: message.html,
-    });
-    return { sent: true, to, bcc: bcc || null };
-  } catch (err) {
-    console.warn('Order email failed:', err.message);
-    return { sent: false, reason: err.message };
-  }
+  return sendMail({ to, bcc, subject: message.subject, text: message.text, html: message.html });
 }

@@ -92,7 +92,12 @@ export default function Login() {
           </label>
 
           <label className="auth-page__field">
-            <span>Password</span>
+            <span>
+              Password
+              <Link to="/forgot-password" className="auth-page__forgot">
+                Forgot password?
+              </Link>
+            </span>
             <input
               type="password"
               value={password}

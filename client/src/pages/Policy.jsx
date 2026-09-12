@@ -38,8 +38,20 @@ const POLICIES = {
     title: 'Privacy Policy',
     body: [
       'We collect name, phone, email, and shipping details only to fulfil orders and provide support.',
-      'Payment details entered at checkout are processed securely; we do not store full card numbers.',
+      'Payment details entered at checkout are processed securely via Razorpay; we do not store full card numbers.',
+      'We use cookies and similar storage to keep you logged in, remember your cart, and (only with your consent) understand site usage. Manage this anytime on our Cookie Preferences page.',
       'We do not sell personal data. Contact us to update or delete your stored order contact details.',
+      `For any privacy questions, contact ${BRAND.email} or ${BRAND.phone}.`,
+    ],
+  },
+  'refund-cancellation': {
+    title: 'Refund & Cancellation Policy',
+    body: [
+      'Order cancellation: you can cancel an order free of charge only before it has been packed/dispatched. Contact us immediately by WhatsApp/call/email with your order ID to request a cancellation.',
+      `Once an order is packed or dispatched, it cannot be cancelled. As stated in our No Refund Policy, all sales are final after payment — H2R Sports does not offer refunds once an order is placed and payment is received, and Cash on Delivery (COD) is not available.`,
+      'Exceptions: if you receive a wrong, damaged, or defective bat, contact us within 48 hours of delivery with clear photos/videos. Verified cases are resolved with a replacement at our discretion.',
+      'Warranty: manufacturing defects on the bat handle are covered for 6 months from the date of delivery (see our No Refund Policy for full warranty terms).',
+      `To request a cancellation or report an issue, contact ${BRAND.email} or ${BRAND.phone}.`,
     ],
   },
 };
@@ -75,6 +87,7 @@ export default function Policy() {
               {val.title}
             </Link>
           ))}
+          <Link to="/cookie-preferences">Cookie Preferences</Link>
         </nav>
 
         <RevealOnScroll as="article" className="policy-card" variant="fast">
