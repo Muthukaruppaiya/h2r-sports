@@ -412,11 +412,9 @@ export default function Orders() {
     <div className="adm-page">
       {toast && <div className={`ord-toast ord-toast--${toast.type}`}>{toast.message}</div>}
 
-      <div className="adm-page__head">
-        <div>
-          <h1>Online Orders</h1>
-          <p>Ordered → Accepted → Packed → Shipped (courier) → Delivered</p>
-        </div>
+      {/* Title/subtitle already shown in the topbar above — no need to repeat "Online Orders"
+          here too. The pipeline stages are likewise already visible as the tabs below. */}
+      <div className="adm-page__head adm-page__head--slim">
         <div className="adm-page__actions">
           <button
             type="button"

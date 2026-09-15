@@ -7348,6 +7348,23 @@ body:has(.pdp-sticky) .float-dock {
   border: 2px solid #fff;
 }
 
+.notif-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 899;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: rgba(15, 23, 42, 0.18);
+  cursor: default;
+  animation: notif-backdrop-in 0.15s ease;
+}
+
+@keyframes notif-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .notif-panel {
   position: absolute;
   top: calc(100% + 10px);
@@ -7359,9 +7376,15 @@ body:has(.pdp-sticky) .float-dock {
   background: #fff;
   border: 1px solid #e2e8f0;
   border-radius: 14px;
-  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.16);
-  z-index: 60;
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.22);
+  z-index: 900;
   overflow: hidden;
+  animation: notif-panel-in 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes notif-panel-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .notif-panel__head {
@@ -7626,6 +7649,13 @@ body:has(.pdp-sticky) .float-dock {
   flex-wrap: wrap;
 }
 
+/* Used on pages where the topbar above already shows the title/subtitle, so the page itself
+   only needs to surface its action button(s) — keeps the "dashboard" from feeling top-heavy. */
+.adm-page__head--slim {
+  justify-content: flex-end;
+  margin-bottom: 0.85rem;
+}
+
 .adm-btn {
   display: inline-flex;
   align-items: center;
@@ -7663,9 +7693,9 @@ body:has(.pdp-sticky) .float-dock {
 
 .adm-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 0.9rem;
-  margin-bottom: 1.15rem;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.65rem;
+  margin-bottom: 0.9rem;
 }
 
 .adm-kpi {
@@ -7673,39 +7703,39 @@ body:has(.pdp-sticky) .float-dock {
   overflow: hidden;
   background: #fff;
   border: 1px solid #e8eef6;
-  border-radius: 16px;
-  padding: 1.05rem 1.15rem;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+  border-radius: 14px;
+  padding: 0.75rem 0.95rem;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
 }
 
 .adm-kpi::after {
   content: '';
   position: absolute;
-  inset: auto -20% -40% auto;
-  width: 120px;
-  height: 120px;
+  inset: auto -25% -50% auto;
+  width: 88px;
+  height: 88px;
   border-radius: 50%;
   background: var(--kpi-glow, rgba(37, 99, 235, 0.12));
   pointer-events: none;
 }
 
 .adm-kpi__label {
-  font-size: 0.78rem;
+  font-size: 0.73rem;
   font-weight: 700;
   color: #64748b;
 }
 
 .adm-kpi__value {
-  margin-top: 0.4rem;
-  font-size: 1.35rem;
+  margin-top: 0.25rem;
+  font-size: 1.15rem;
   font-weight: 800;
   letter-spacing: -0.03em;
   color: var(--kpi-color, #0f172a);
 }
 
 .adm-kpi__hint {
-  margin-top: 0.35rem;
-  font-size: 0.76rem;
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
   color: #94a3b8;
 }
 

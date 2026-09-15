@@ -95,40 +95,49 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className="notif-panel">
-          <div className="notif-panel__head">
-            <strong>Notifications</strong>
-            <button
-              type="button"
-              className="notif-panel__mark"
-              onClick={markAllRead}
-              disabled={loading || unreadCount === 0}
-            >
-              Mark all read
-            </button>
+        <>
+          <button
+            type="button"
+            className="notif-backdrop"
+            aria-label="Close notifications"
+            tabIndex={-1}
+            onClick={() => setOpen(false)}
+          />
+          <div className="notif-panel">
+            <div className="notif-panel__head">
+              <strong>Notifications</strong>
+              <button
+                type="button"
+                className="notif-panel__mark"
+                onClick={markAllRead}
+                disabled={loading || unreadCount === 0}
+              >
+                Mark all read
+              </button>
+            </div>
+            <div className="notif-panel__list">
+              {notifications.length === 0 ? (
+                <div className="notif-panel__empty">No notifications yet</div>
+              ) : (
+                notifications.map((n) => (
+                  <button
+                    type="button"
+                    key={n._id}
+                    className={`notif-item${n.read ? '' : ' is-unread'}`}
+                    onClick={() => openNotification(n)}
+                  >
+                    <span className="notif-item__dot" aria-hidden="true" />
+                    <span className="notif-item__body">
+                      <span className="notif-item__title">{n.title}</span>
+                      <span className="notif-item__msg">{n.message}</span>
+                      <span className="notif-item__time">{timeAgo(n.createdAt)}</span>
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
           </div>
-          <div className="notif-panel__list">
-            {notifications.length === 0 ? (
-              <div className="notif-panel__empty">No notifications yet</div>
-            ) : (
-              notifications.map((n) => (
-                <button
-                  type="button"
-                  key={n._id}
-                  className={`notif-item${n.read ? '' : ' is-unread'}`}
-                  onClick={() => openNotification(n)}
-                >
-                  <span className="notif-item__dot" aria-hidden="true" />
-                  <span className="notif-item__body">
-                    <span className="notif-item__title">{n.title}</span>
-                    <span className="notif-item__msg">{n.message}</span>
-                    <span className="notif-item__time">{timeAgo(n.createdAt)}</span>
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
+        </>
       )}
     </div>
   );

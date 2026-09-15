@@ -212,6 +212,13 @@ export default function AdminLayout() {
     setSidebarOpen(false);
   }, [pathname, search]);
 
+  // Admin pages don't reset scroll on navigation by default (React Router keeps the old
+  // scroll position) — without this, jumping from a scrolled list to e.g. "+ New shop bill"
+  // renders the new page already scrolled down, cutting off its heading/back button.
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [pathname]);
+
   useEffect(() => {
     document.body.style.overflow = sidebarOpen ? 'hidden' : '';
     return () => {
