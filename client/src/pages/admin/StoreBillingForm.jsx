@@ -198,7 +198,6 @@ export default function StoreBillingForm() {
             ← Back to Store Billing
           </button>
           <h1>{isEdit ? `Edit shop bill — ${billId}` : 'New shop bill'}</h1>
-          <p>Walk-in counter sale — pick the product from inventory, apply a discount, then add customer details.</p>
         </div>
       </div>
 

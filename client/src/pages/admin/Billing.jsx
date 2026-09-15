@@ -129,11 +129,8 @@ export default function Billing() {
 
   return (
     <div className="adm-page">
-      <div className="adm-page__head no-print">
-        <div>
-          <h1>Customer Billing</h1>
-          <p>Track prepaid collections, refunds, and printable customer invoices.</p>
-        </div>
+      {/* Title/subtitle already shown in the topbar above — no need to repeat it here. */}
+      <div className="adm-page__head adm-page__head--slim no-print">
         <div className="adm-page__actions">
           <Link to="/admin/store-billing" className="adm-btn adm-btn--ghost">
             Store billing

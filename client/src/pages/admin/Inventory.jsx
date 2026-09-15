@@ -330,13 +330,9 @@ export default function Inventory() {
 
   return (
     <div className="adm-page">
-      <div className="adm-page__head">
-        <div>
-          <h1>Items</h1>
-          <p style={{ margin: '0.35rem 0 0', color: '#64748b', fontSize: '0.9rem' }}>
-            Catalogue products, categories, and collections. API: {API_ORIGIN}
-          </p>
-        </div>
+      {/* Title/subtitle already shown in the topbar above; the API origin was leftover debug
+          text and never meant for a live admin. */}
+      <div className="adm-page__head adm-page__head--slim">
         {tab === 'products' && (
           <div className="adm-page__actions">
             <button type="button" className="adm-btn adm-btn--primary" onClick={() => openModal()}>

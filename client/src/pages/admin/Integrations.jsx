@@ -100,9 +100,7 @@ export default function Integrations() {
 
   return (
     <div className="admin-stub">
-      <h1>Integrations</h1>
-      <p>Connected tools for payments, shipping, and marketing.</p>
-
+      {/* Title/subtitle already shown in the topbar above. */}
       <section className="pay-mode">
         <div className="pay-mode__head">
           <h2>Razorpay payment mode</h2>

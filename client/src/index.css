@@ -7355,7 +7355,9 @@ body:has(.pdp-sticky) .float-dock {
   border: 0;
   padding: 0;
   margin: 0;
-  background: rgba(15, 23, 42, 0.18);
+  background: rgba(7, 24, 43, 0.45);
+  backdrop-filter: blur(1.5px);
+  -webkit-backdrop-filter: blur(1.5px);
   cursor: default;
   animation: notif-backdrop-in 0.15s ease;
 }
@@ -7628,12 +7630,20 @@ body:has(.pdp-sticky) .float-dock {
   margin-bottom: 1.35rem;
 }
 
+/* Flex items default to min-width:auto, which refuses to shrink below the title text's own
+   width — on a narrow phone that forces the whole header (and the page under it) wider than
+   the screen instead of just wrapping the heading onto another line. */
+.adm-page__head > * {
+  min-width: 0;
+}
+
 .adm-page__head h1 {
   margin: 0;
   font-size: clamp(1.45rem, 2vw, 1.85rem);
   font-weight: 800;
   letter-spacing: -0.03em;
   color: #0f172a;
+  overflow-wrap: break-word;
 }
 
 .adm-page__head p {
@@ -7785,10 +7795,18 @@ body:has(.pdp-sticky) .float-dock {
   text-transform: uppercase;
 }
 
+.adm-field {
+  /* Grid/flex item safety net — without this, a field with a long value (e.g. a select
+     showing a long product name) can refuse to shrink and push the whole row/page wider
+     than the viewport on mobile instead of just truncating its own text. */
+  min-width: 0;
+}
+
 .adm-field input,
 .adm-field select,
 .adm-field textarea {
   width: 100%;
+  max-width: 100%;
   padding: 0.58rem 0.7rem;
   border: 1px solid #cbd5e1;
   border-radius: 10px;
@@ -7796,6 +7814,12 @@ body:has(.pdp-sticky) .float-dock {
   font-size: 0.9rem;
   background: #fff;
   color: #0f172a;
+}
+
+.adm-field select {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .adm-field input:focus,
@@ -8993,7 +9017,10 @@ body:has(.pdp-sticky) .float-dock {
 
 .adm-field-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, 1fr), not plain 1fr — otherwise a long value inside a field (e.g. a select
+     showing a long product name) refuses to shrink below its own content width and forces
+     the whole grid — and the page — wider than the screen on mobile. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0.75rem;
 }
 
@@ -9029,12 +9056,12 @@ body:has(.pdp-sticky) .float-dock {
 }
 
 @media (max-width: 640px) {
-  .adm-field-row { grid-template-columns: 1fr; }
+  .adm-field-row { grid-template-columns: minmax(0, 1fr); }
 }
 
 .adm-form-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0.85rem;
 }
 
@@ -9051,7 +9078,7 @@ body:has(.pdp-sticky) .float-dock {
 }
 
 @media (max-width: 720px) {
-  .adm-form-grid { grid-template-columns: 1fr; }
+  .adm-form-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 .admin-stub {

@@ -45,11 +45,8 @@ export default function Dashboard() {
 
   return (
     <div className="adm-page">
-      <div className="adm-page__head">
-        <div>
-          <h1>Dashboard Overview</h1>
-          <p>Sales, payments, and store expenses at a glance.</p>
-        </div>
+      {/* Title/subtitle already shown in the topbar above — no need to repeat it here. */}
+      <div className="adm-page__head adm-page__head--slim">
         <div className="adm-page__actions">
           <Link to="/admin/inventory" className="adm-btn adm-btn--ghost">
             Inventory

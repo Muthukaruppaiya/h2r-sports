@@ -96,11 +96,8 @@ export default function StoreBilling() {
 
   return (
     <div className="adm-page">
-      <div className="adm-page__head">
-        <div>
-          <h1>Store Billing</h1>
-          <p>Walk-in counter sales — pick products from inventory, apply discount, then customer details.</p>
-        </div>
+      {/* Title/subtitle already shown in the topbar above — no need to repeat it here. */}
+      <div className="adm-page__head adm-page__head--slim">
         <div className="adm-page__actions">
           <button
             type="button"
