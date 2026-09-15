@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
+import InvoiceDrawer from '../../components/admin/InvoiceDrawer';
 import {
   getStatusLabel,
   getStatusStyle,
@@ -18,6 +19,36 @@ function money(n) {
   return `₹${Number(n || 0).toLocaleString('en-IN')}`;
 }
 
+/** Friendlier phrasing for the one-click "move it forward" button, keyed by the target status. */
+const ADVANCE_LABELS = {
+  accepted: 'Accept order',
+  packed: 'Mark packed',
+  shipped: 'Ship order',
+  delivered: 'Mark delivered',
+};
+
+/** The single forward step for a status (e.g. ordered → accepted), ignoring the cancel branch. */
+function getForwardStatus(status) {
+  const current = normalizeStatus(status);
+  return getAllowedNextStatuses(status).find((s) => s !== current && s !== 'cancelled') || null;
+}
+
+function initials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  return (parts[0][0] + (parts[1]?.[0] || '')).toUpperCase();
+}
+
+function formatOrderDate(date) {
+  return new Date(date).toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function StatusBadge({ status }) {
   const style = getStatusStyle(status);
   return (
@@ -30,36 +61,94 @@ function StatusBadge({ status }) {
   );
 }
 
-function printAddressLabels(orders) {
+/** Escapes text dropped into the label's HTML template. */
+function escLabel(v) {
+  return String(v ?? '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[c]));
+}
+
+async function printAddressLabels(orders) {
+  // Open the window synchronously (before any await) or popup blockers will kill it once
+  // the store-address fetch below yields control back to the event loop.
   const win = window.open('', '_blank', 'width=800,height=900');
   if (!win) {
     alert('Allow pop-ups to print address labels');
     return;
   }
+
+  let storeAddress = null;
+  try {
+    const res = await api.get('/admin/settings/store-address');
+    storeAddress = res.data?.storeAddress || null;
+  } catch {
+    storeAddress = null;
+  }
+  const hasFrom = Boolean(storeAddress?.line1 || storeAddress?.city || storeAddress?.pincode);
+
   const pages = orders
     .map((order, index) => {
       const s = order.shipping || {};
       const c = order.customer || {};
+      const isCod = order.paymentMethod === 'cod' || order.paymentStatus === 'pending_cod';
+      const itemCount = (order.items || []).reduce((sum, i) => sum + (Number(i.qty) || 0), 0);
+
       return `
         <section class="page">
           <div class="label">
-            <div class="brand">H2R Sports — Shipping Label</div>
-            <div class="meta">Page ${index + 1} of ${orders.length}</div>
-            <div class="oid">Order #${String(order.orderId || '').slice(0, 14).toUpperCase()}</div>
-            <div class="to">Ship to</div>
-            <div class="name">${c.name || ''}</div>
-            <div class="addr">
-              ${s.addressLine1 || ''}<br/>
-              ${s.addressLine2 ? `${s.addressLine2}<br/>` : ''}
-              ${s.city || ''}, ${s.state || ''} — ${s.pincode || ''}<br/>
-              Phone: ${c.phone || ''}
+            <div class="label__top">
+              <div class="brand">H2R Sports</div>
+              <div class="meta">Label ${index + 1} of ${orders.length}</div>
             </div>
+
+            <div class="cod ${isCod ? 'cod--due' : 'cod--paid'}">
+              ${isCod ? `COD — COLLECT ${money(order.total)}` : 'PREPAID — DO NOT COLLECT'}
+            </div>
+
+            ${
+              hasFrom
+                ? `<div class="block block--from">
+                    <div class="block__tag">Ship From</div>
+                    <div class="block__name">${escLabel(storeAddress.name || 'H2R Sports')}</div>
+                    <div class="block__addr">
+                      ${escLabel(storeAddress.line1)}${storeAddress.line2 ? `, ${escLabel(storeAddress.line2)}` : ''}<br/>
+                      ${escLabel([storeAddress.city, storeAddress.state].filter(Boolean).join(', '))}${
+                        storeAddress.pincode ? ` — ${escLabel(storeAddress.pincode)}` : ''
+                      }
+                      ${storeAddress.phone ? `<br/>Ph: ${escLabel(storeAddress.phone)}` : ''}
+                      ${storeAddress.gstin ? `<br/>GSTIN: ${escLabel(storeAddress.gstin)}` : ''}
+                    </div>
+                  </div>`
+                : ''
+            }
+
+            <div class="block block--to">
+              <div class="block__tag">Ship To</div>
+              <div class="block__name block__name--lg">${escLabel(c.name)}</div>
+              <div class="block__addr block__addr--lg">
+                ${escLabel(s.addressLine1)}<br/>
+                ${s.addressLine2 ? `${escLabel(s.addressLine2)}<br/>` : ''}
+                ${escLabel(s.city)}, ${escLabel(s.state)} — ${escLabel(s.pincode)}<br/>
+                Phone: ${escLabel(c.phone)}
+              </div>
+            </div>
+
+            <div class="oid-box">
+              <div class="oid-box__label">Order No.</div>
+              <div class="oid-box__num">${escLabel(String(order.orderId || '').toUpperCase())}</div>
+            </div>
+
             <div class="items">
+              <div class="items__head">${itemCount} item${itemCount === 1 ? '' : 's'}</div>
               ${(order.items || [])
                 .map(
                   (i) =>
-                    `${i.qty}× ${i.name}${i.sizeLabel ? ` (${i.sizeLabel})` : ''}${
-                      i.weightLabel ? ` · ${i.weightLabel}` : ''
+                    `${i.qty}× ${escLabel(i.name)}${i.sizeLabel ? ` (${escLabel(i.sizeLabel)})` : ''}${
+                      i.weightLabel ? ` · ${escLabel(i.weightLabel)}` : ''
                     }`
                 )
                 .join('<br/>')}
@@ -85,34 +174,50 @@ function printAddressLabels(orders) {
         align-items: flex-start;
         padding-top: 8mm;
       }
-      .page:last-child {
-        page-break-after: auto;
-        break-after: auto;
-      }
+      .page:last-child { page-break-after: auto; break-after: auto; }
       .label {
         width: 100%;
         border: 2px solid #0f172a;
         border-radius: 12px;
-        padding: 22px 24px;
+        padding: 20px 24px 24px;
       }
-      .brand { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #64748b; }
-      .meta { font-size: 11px; color: #94a3b8; margin-top: 4px; }
-      .oid { font-weight: 800; font-size: 22px; margin: 14px 0 18px; }
-      .to { font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 700; }
-      .name { font-size: 26px; font-weight: 800; margin: 6px 0 10px; }
-      .addr { font-size: 16px; line-height: 1.6; }
-      .items { margin-top: 22px; padding-top: 14px; border-top: 1px dashed #cbd5e1; font-size: 13px; color: #475569; }
+      .label__top { display: flex; justify-content: space-between; align-items: baseline; }
+      .brand { font-size: 13px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #0f172a; }
+      .meta { font-size: 11px; color: #94a3b8; }
+      .cod {
+        margin: 12px 0 14px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-weight: 800;
+        font-size: 15px;
+        letter-spacing: 0.03em;
+        text-align: center;
+      }
+      .cod--due { background: #fee2e2; color: #991b1b; border: 1.5px solid #fca5a5; }
+      .cod--paid { background: #dcfce7; color: #166534; border: 1.5px solid #86efac; }
+      .block { margin-bottom: 12px; }
+      .block--from { padding-bottom: 10px; border-bottom: 1px dashed #cbd5e1; }
+      .block__tag { font-size: 10px; text-transform: uppercase; color: #94a3b8; font-weight: 700; letter-spacing: 0.04em; }
+      .block__name { font-size: 14px; font-weight: 700; margin: 2px 0 4px; }
+      .block__name--lg { font-size: 24px; font-weight: 800; margin: 4px 0 8px; }
+      .block__addr { font-size: 12.5px; line-height: 1.55; color: #334155; }
+      .block__addr--lg { font-size: 15.5px; line-height: 1.6; color: #0f172a; }
+      .oid-box {
+        margin: 14px 0;
+        padding: 8px 12px;
+        border: 1.5px solid #0f172a;
+        border-radius: 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .oid-box__label { font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: 700; }
+      .oid-box__num { font-family: 'Consolas', monospace; font-size: 18px; font-weight: 800; letter-spacing: 0.06em; }
+      .items { margin-top: 14px; padding-top: 12px; border-top: 1px dashed #cbd5e1; font-size: 13px; color: #475569; }
+      .items__head { font-weight: 700; color: #0f172a; margin-bottom: 4px; }
       @media print {
-        .page {
-          min-height: auto;
-          height: 100vh;
-          page-break-after: always;
-          break-after: page;
-        }
-        .page:last-child {
-          page-break-after: auto;
-          break-after: auto;
-        }
+        .page { min-height: auto; height: 100vh; page-break-after: always; break-after: page; }
+        .page:last-child { page-break-after: auto; break-after: auto; }
       }
     </style></head><body>${pages}
     <script>window.onload = () => { setTimeout(() => window.print(), 250); }</script>
@@ -125,6 +230,7 @@ export default function Orders() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [invoiceOrder, setInvoiceOrder] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [updatingId, setUpdatingId] = useState(null);
@@ -187,6 +293,12 @@ export default function Orders() {
       if (selectedOrder?.orderId === updated.orderId) setSelectedOrder(updated);
       showToast('success', `Order updated to ${STATUS_LABELS[normalizeStatus(newStatus)]}`);
       setCourierModal(null);
+
+      // Packed = ready to hand off to courier — auto-generate the shipping address
+      // label right away instead of requiring a separate manual "select + print" step.
+      if (normalizeStatus(newStatus) === 'packed') {
+        printAddressLabels([updated]);
+      }
     } catch (err) {
       const message = err.response?.data?.error || 'Failed to update status';
       showToast('error', message);
@@ -227,6 +339,13 @@ export default function Orders() {
     });
     return counts;
   }, [orders]);
+
+  const revenuePaid = useMemo(
+    () => orders.filter((o) => o.paymentStatus === 'paid').reduce((sum, o) => sum + Number(o.total || 0), 0),
+    [orders]
+  );
+
+  const needsAction = (statusCounts.ordered || 0) + (statusCounts.accepted || 0);
 
   const filteredOrders = orders.filter((order) => {
     const status = normalizeStatus(order.status);
@@ -291,25 +410,7 @@ export default function Orders() {
 
   return (
     <div className="adm-page">
-      {toast && (
-        <div
-          style={{
-            position: 'fixed',
-            top: '1.5rem',
-            right: '1.5rem',
-            zIndex: 2000,
-            padding: '0.85rem 1.25rem',
-            borderRadius: '10px',
-            background: toast.type === 'success' ? '#166534' : '#991b1b',
-            color: 'white',
-            fontWeight: 600,
-            fontSize: '0.9rem',
-            boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-          }}
-        >
-          {toast.message}
-        </div>
-      )}
+      {toast && <div className={`ord-toast ord-toast--${toast.type}`}>{toast.message}</div>}
 
       <div className="adm-page__head">
         <div>
@@ -319,18 +420,39 @@ export default function Orders() {
         <div className="adm-page__actions">
           <button
             type="button"
-            className="adm-btn adm-btn--ghost"
-            onClick={() => setStatusFilter('pending_courier')}
+            className="adm-btn adm-btn--primary"
+            onClick={printSelected}
+            title="Select Packed orders below, then print shipping labels"
           >
-            Pending courier ({statusCounts.packed || 0})
-          </button>
-          <button type="button" className="adm-btn adm-btn--primary" onClick={printSelected}>
-            Print addresses ({selectedIds.length})
+            🖨️ Print addresses ({selectedIds.length})
           </button>
         </div>
       </div>
 
-      <div className="adm-filters" style={{ gridTemplateColumns: '1.4fr repeat(auto-fit, minmax(120px, 1fr))' }}>
+      <div className="adm-kpi-grid">
+        <div className="adm-kpi" style={{ '--kpi-color': '#1e40af', '--kpi-glow': 'rgba(37,99,235,0.14)' }}>
+          <div className="adm-kpi__label">Total orders</div>
+          <div className="adm-kpi__value">{statusCounts.all}</div>
+          <div className="adm-kpi__hint">All time</div>
+        </div>
+        <div className="adm-kpi" style={{ '--kpi-color': '#854d0e', '--kpi-glow': 'rgba(234,179,8,0.16)' }}>
+          <div className="adm-kpi__label">Needs action</div>
+          <div className="adm-kpi__value">{needsAction}</div>
+          <div className="adm-kpi__hint">Ordered + Accepted</div>
+        </div>
+        <div className="adm-kpi" style={{ '--kpi-color': '#9a3412', '--kpi-glow': 'rgba(249,115,22,0.16)' }}>
+          <div className="adm-kpi__label">Awaiting courier</div>
+          <div className="adm-kpi__value">{statusCounts.packed || 0}</div>
+          <div className="adm-kpi__hint">Packed &amp; ready to ship</div>
+        </div>
+        <div className="adm-kpi" style={{ '--kpi-color': '#166534', '--kpi-glow': 'rgba(22,163,74,0.14)' }}>
+          <div className="adm-kpi__label">Revenue collected</div>
+          <div className="adm-kpi__value">{money(revenuePaid)}</div>
+          <div className="adm-kpi__hint">Paid orders</div>
+        </div>
+      </div>
+
+      <div className="adm-filters">
         <div className="adm-field">
           <label>Search</label>
           <input
@@ -342,7 +464,7 @@ export default function Orders() {
         </div>
       </div>
 
-      <div className="adm-tabs" style={{ display: 'flex', width: '100%', marginBottom: '1rem' }}>
+      <div className="adm-tabs">
         {[
           { key: 'all', label: 'All' },
           { key: 'pending_courier', label: 'Pending courier' },
@@ -354,8 +476,8 @@ export default function Orders() {
             className={`adm-tabs__btn${statusFilter === key ? ' is-active' : ''}`}
             onClick={() => setStatusFilter(key)}
           >
-            {label}
-            <span style={{ marginLeft: 6, opacity: 0.85 }}>
+            {label}{' '}
+            <span style={{ opacity: 0.85 }}>
               (
               {key === 'all'
                 ? statusCounts.all
@@ -369,10 +491,26 @@ export default function Orders() {
       </div>
 
       <div className="adm-panel">
+        {statusFilter !== 'pending_courier' && pendingCourier.length > 0 && (
+          <div className="ord-alert">
+            <span>
+              📦 <strong>{pendingCourier.length}</strong> order{pendingCourier.length > 1 ? 's' : ''} packed
+              and waiting for courier pickup.
+            </span>
+            <button
+              type="button"
+              className="ord-alert__link"
+              onClick={() => setStatusFilter('pending_courier')}
+            >
+              Review &amp; ship →
+            </button>
+          </div>
+        )}
+
         <div className="adm-panel__head">
           <h2>Fulfillment queue</h2>
           {statusFilter === 'pending_courier' || pendingCourier.length > 0 ? (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', color: '#64748b' }}>
+            <label className="ord-select-hint">
               <input type="checkbox" checked={allPendingSelected} onChange={toggleSelectAllPending} />
               Select all pending courier
             </label>
@@ -400,6 +538,12 @@ export default function Orders() {
                 {filteredOrders.map((order) => {
                   const status = normalizeStatus(order.status);
                   const isPendingCourier = status === 'packed';
+                  const isUpdating = updatingId === order.orderId;
+                  const forward = getForwardStatus(status);
+                  const canCancel = status !== 'delivered' && status !== 'cancelled';
+                  const items = order.items || [];
+                  const extraItems = items.length - 1;
+
                   return (
                     <tr key={order.orderId}>
                       <td>
@@ -416,86 +560,110 @@ export default function Orders() {
                         />
                       </td>
                       <td>
-                        <div style={{ fontWeight: 750, color: '#0f172a' }}>
-                          #{String(order.orderId).substring(0, 12)}
-                        </div>
-                        <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                          {new Date(order.createdAt).toLocaleString('en-IN', {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </div>
+                        <div className="ord-order-id">#{String(order.orderId).substring(0, 12)}</div>
+                        <div className="ord-order-date">{formatOrderDate(order.createdAt)}</div>
                       </td>
                       <td>
-                        <div style={{ fontWeight: 600 }}>{order.customer.name}</div>
-                        <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{order.customer.email}</div>
-                        <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{order.customer.phone}</div>
+                        <div className="ord-customer">
+                          <span className="ord-avatar" aria-hidden="true">
+                            {initials(order.customer.name)}
+                          </span>
+                          <div>
+                            <div className="ord-customer__name">{order.customer.name}</div>
+                            <div className="ord-customer__meta">{order.customer.email}</div>
+                            <div className="ord-customer__meta">{order.customer.phone}</div>
+                          </div>
+                        </div>
                       </td>
-                      <td style={{ fontSize: '0.85rem', maxWidth: 220 }}>
-                        {order.items.map((item) => (
-                          <div key={`${item.id}-${item.sizeId}`} style={{ marginBottom: 4 }}>
+                      <td className="ord-items">
+                        {items.slice(0, 1).map((item) => (
+                          <div key={`${item.id}-${item.sizeId}`} className="ord-items__line">
                             {item.qty}× {item.name}
-                            <span style={{ color: '#94a3b8' }}>
+                            <span className="ord-items__spec">
                               {' '}
                               ({item.sizeLabel}
                               {item.weightLabel ? ` · ${item.weightLabel}` : ''})
                             </span>
                           </div>
                         ))}
-                      </td>
-                      <td>
-                        <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.82rem' }}>
-                          {order.paymentMethod}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                          {PAYMENT_STATUS_LABELS[order.paymentStatus] || order.paymentStatus}
-                        </div>
-                      </td>
-                      <td style={{ fontWeight: 750 }}>{money(order.total)}</td>
-                      <td>
-                        <div style={{ display: 'grid', gap: 8 }}>
-                          <StatusBadge status={order.status} />
-                          <select
-                            className="adm-field"
-                            value={status}
-                            disabled={
-                              status === 'delivered' ||
-                              status === 'cancelled' ||
-                              updatingId === order.orderId
-                            }
-                            onChange={(e) => requestStatusChange(order, e.target.value)}
-                            style={{
-                              padding: '0.45rem 0.55rem',
-                              borderRadius: 8,
-                              border: '1px solid #cbd5e1',
-                              fontWeight: 600,
-                              fontSize: '0.82rem',
-                            }}
+                        {extraItems > 0 && (
+                          <span
+                            className="ord-items__more"
+                            title={items
+                              .slice(1)
+                              .map((i) => `${i.qty}× ${i.name}`)
+                              .join(', ')}
                           >
-                            {getAllowedNextStatuses(order.status).map((s) => (
-                              <option key={s} value={s}>
-                                {STATUS_LABELS[s]}
-                              </option>
-                            ))}
-                          </select>
+                            +{extraItems} more item{extraItems > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        <div className="ord-pay">
+                          <span className="ord-pay__method">{order.paymentMethod}</span>
+                          <span
+                            className={`adm-pill ${
+                              order.paymentStatus === 'paid'
+                                ? 'adm-pill--ok'
+                                : order.paymentStatus === 'refunded'
+                                  ? 'adm-pill--info'
+                                  : 'adm-pill--warn'
+                            }`}
+                          >
+                            {PAYMENT_STATUS_LABELS[order.paymentStatus] || order.paymentStatus}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="ord-total">{money(order.total)}</td>
+                      <td>
+                        <div className="ord-status-cell">
+                          <StatusBadge status={order.status} />
+                          {forward && (
+                            <button
+                              type="button"
+                              className="ord-advance-btn"
+                              disabled={isUpdating}
+                              onClick={() => requestStatusChange(order, forward)}
+                            >
+                              {isUpdating ? 'Updating…' : ADVANCE_LABELS[forward] || `Mark ${STATUS_LABELS[forward]}`}
+                            </button>
+                          )}
+                          {canCancel && (
+                            <button
+                              type="button"
+                              className="ord-cancel-link"
+                              disabled={isUpdating}
+                              onClick={() => requestStatusChange(order, 'cancelled')}
+                            >
+                              Cancel order
+                            </button>
+                          )}
+                          {!forward && !canCancel && <span className="ord-done-note">No further action</span>}
                           {order.courier?.trackingId && (
-                            <div style={{ fontSize: '0.75rem', color: '#4338ca' }}>
+                            <div className="ord-courier-note">
                               {order.courier.name}: {order.courier.trackingId}
                             </div>
                           )}
                         </div>
                       </td>
                       <td>
-                        <button
-                          type="button"
-                          className="adm-btn adm-btn--ghost"
-                          onClick={() => setSelectedOrder(order)}
-                        >
-                          View
-                        </button>
+                        <div className="ord-row-actions">
+                          <button
+                            type="button"
+                            className="adm-btn adm-btn--ghost"
+                            onClick={() => setSelectedOrder(order)}
+                          >
+                            View
+                          </button>
+                          <button
+                            type="button"
+                            className="adm-btn adm-btn--ghost"
+                            onClick={() => setInvoiceOrder(order)}
+                            title="Print invoice"
+                          >
+                            🧾 Invoice
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -522,7 +690,7 @@ export default function Orders() {
                 applyStatus(courierModal.order, courierModal.status, courierForm);
               }}
             >
-              <p style={{ margin: '0 0 1rem', color: '#64748b', fontSize: '0.9rem' }}>
+              <p className="ord-modal-copy">
                 Enter courier info for #{String(courierModal.order.orderId).slice(0, 12)}. Customers will see
                 this for tracking.
               </p>
@@ -562,7 +730,7 @@ export default function Orders() {
                   />
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <div className="ord-modal-actions">
                 <button type="submit" className="adm-btn adm-btn--primary">
                   Mark shipped
                 </button>
@@ -580,14 +748,17 @@ export default function Orders() {
           order={selectedOrder}
           onClose={() => setSelectedOrder(null)}
           onStatusChange={requestStatusChange}
+          onPrintInvoice={() => setInvoiceOrder(selectedOrder)}
           updating={updatingId === selectedOrder.orderId}
         />
       )}
+
+      {invoiceOrder && <InvoiceDrawer order={invoiceOrder} onClose={() => setInvoiceOrder(null)} />}
     </div>
   );
 }
 
-function OrderDetailDrawer({ order, onClose, onStatusChange, updating }) {
+function OrderDetailDrawer({ order, onClose, onStatusChange, onPrintInvoice, updating }) {
   const status = normalizeStatus(order.status);
   const stageIndex = getStageIndex(order.status);
 
@@ -596,18 +767,23 @@ function OrderDetailDrawer({ order, onClose, onStatusChange, updating }) {
       <aside className="adm-drawer" onClick={(e) => e.stopPropagation()}>
         <div className="adm-drawer__head">
           <strong>Order #{String(order.orderId).slice(0, 12)}</strong>
-          <button type="button" className="adm-btn adm-btn--ghost" onClick={onClose}>
-            Close
-          </button>
+          <div className="inv-doc__head-actions">
+            <button type="button" className="adm-btn adm-btn--ghost" onClick={onPrintInvoice}>
+              🧾 Print invoice
+            </button>
+            <button type="button" className="adm-btn adm-btn--ghost" onClick={onClose}>
+              Close
+            </button>
+          </div>
         </div>
         <div className="adm-drawer__body">
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+          <div className="ord-detail__top">
             <StatusBadge status={order.status} />
             <select
+              className="ord-detail__select"
               value={status}
               disabled={status === 'delivered' || status === 'cancelled' || updating}
               onChange={(e) => onStatusChange(order, e.target.value)}
-              style={{ padding: '0.45rem 0.6rem', borderRadius: 8, border: '1px solid #cbd5e1', fontWeight: 600 }}
             >
               {getAllowedNextStatuses(order.status).map((s) => (
                 <option key={s} value={s}>
@@ -618,7 +794,7 @@ function OrderDetailDrawer({ order, onClose, onStatusChange, updating }) {
           </div>
 
           {status !== 'cancelled' && (
-            <div style={{ display: 'grid', gap: 10, marginBottom: 18 }}>
+            <div className="ord-timeline">
               {STATUS_STAGES.map((stage, idx) => {
                 const done = stageIndex >= idx;
                 const at =
@@ -626,22 +802,14 @@ function OrderDetailDrawer({ order, onClose, onStatusChange, updating }) {
                   (stage.id === 'ordered' ? order.statusTimestamps?.confirmedAt : null) ||
                   (stage.id === 'accepted' ? order.statusTimestamps?.paidAt : null);
                 return (
-                  <div key={stage.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                    <span
-                      style={{
-                        width: 10,
-                        height: 10,
-                        marginTop: 5,
-                        borderRadius: '50%',
-                        background: done ? '#16a34a' : '#cbd5e1',
-                      }}
-                    />
+                  <div key={stage.id} className="ord-timeline__row">
+                    <span className={`ord-timeline__dot${done ? ' ord-timeline__dot--done' : ''}`} />
                     <div>
-                      <div style={{ fontWeight: 700, color: done ? '#0f172a' : '#94a3b8' }}>{stage.label}</div>
-                      <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{stage.description}</div>
-                      {at && done && (
-                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{formatStatusDate(at)}</div>
-                      )}
+                      <div className={`ord-timeline__label${done ? ' ord-timeline__label--done' : ''}`}>
+                        {stage.label}
+                      </div>
+                      <div className="ord-timeline__desc">{stage.description}</div>
+                      {at && done && <div className="ord-timeline__at">{formatStatusDate(at)}</div>}
                     </div>
                   </div>
                 );
@@ -650,9 +818,11 @@ function OrderDetailDrawer({ order, onClose, onStatusChange, updating }) {
           )}
 
           {order.courier?.trackingId && (
-            <section style={{ marginBottom: 16, padding: 12, borderRadius: 12, background: '#eef2ff' }}>
-              <div style={{ fontWeight: 800, color: '#3730a3', marginBottom: 6 }}>Courier tracking</div>
-              <div><strong>{order.courier.name}</strong></div>
+            <section className="ord-courier-box">
+              <div className="ord-courier-box__title">Courier tracking</div>
+              <div>
+                <strong>{order.courier.name}</strong>
+              </div>
               <div>AWB: {order.courier.trackingId}</div>
               {order.courier.trackingUrl && (
                 <a href={order.courier.trackingUrl} target="_blank" rel="noreferrer">
@@ -663,33 +833,32 @@ function OrderDetailDrawer({ order, onClose, onStatusChange, updating }) {
             </section>
           )}
 
-          <section style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
-              Customer
-            </div>
-            <div style={{ fontWeight: 700 }}>{order.customer.name}</div>
-            <div style={{ color: '#64748b' }}>{order.customer.email}</div>
-            <div style={{ color: '#64748b' }}>{order.customer.phone}</div>
+          <section className="ord-detail-section">
+            <div className="ord-detail-section__label">Customer</div>
+            <div className="ord-detail-section__name">{order.customer.name}</div>
+            <div className="ord-detail-section__line">{order.customer.email}</div>
+            <div className="ord-detail-section__line">{order.customer.phone}</div>
           </section>
 
-          <section style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
-              Shipping address
-            </div>
-            <div style={{ lineHeight: 1.55 }}>
+          <section className="ord-detail-section">
+            <div className="ord-detail-section__label">Shipping address</div>
+            <div className="ord-detail-address">
               {order.shipping.addressLine1}
-              {order.shipping.addressLine2 ? <><br />{order.shipping.addressLine2}</> : null}
+              {order.shipping.addressLine2 ? (
+                <>
+                  <br />
+                  {order.shipping.addressLine2}
+                </>
+              ) : null}
               <br />
               {order.shipping.city}, {order.shipping.state} — {order.shipping.pincode}
             </div>
           </section>
 
-          <section style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>
-              Items
-            </div>
+          <section className="ord-detail-section">
+            <div className="ord-detail-section__label">Items</div>
             {(order.items || []).map((item) => (
-              <div key={`${item.id}-${item.sizeId}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}>
+              <div key={`${item.id}-${item.sizeId}`} className="ord-detail-item">
                 <span>
                   {item.qty}× {item.name} ({item.sizeLabel}
                   {item.weightLabel ? ` · ${item.weightLabel}` : ''})
@@ -697,7 +866,7 @@ function OrderDetailDrawer({ order, onClose, onStatusChange, updating }) {
                 <strong>{money(item.lineTotal)}</strong>
               </div>
             ))}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontWeight: 800 }}>
+            <div className="ord-detail-total">
               <span>Total</span>
               <span>{money(order.total)}</span>
             </div>

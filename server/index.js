@@ -14,9 +14,11 @@ import Review from './models/Review.js';
 import User from './models/User.js';
 import Notification from './models/Notification.js';
 import MarketingSettings from './models/MarketingSettings.js';
+import AppSettings from './models/AppSettings.js';
 import Media from './models/Media.js';
 import StoreBill from './models/StoreBill.js';
 import PendingCheckout from './models/PendingCheckout.js';
+import { ensureCounterSeed, nextSequence } from './models/Counter.js';
 import { buildStatusUpdate, isValidStatus } from './utils/orderStatus.js';
 import { parseInstagramUrl } from './utils/instagram.js';
 import { buildLineItemsFromRequest, validateCheckoutPayload } from './utils/orderCheckout.js';
@@ -30,11 +32,15 @@ import {
   isRazorpayWebhookConfigured,
   rupeesToPaise,
   verifyRazorpaySignature,
-  verifyRazorpayWebhookSignature,
+  verifyRazorpayWebhookSignatureAnyMode,
+  getPaymentMode,
+  setPaymentMode,
+  getPaymentModeStatus,
 } from './utils/razorpay.js';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import crypto from 'crypto';
+import rateLimit from 'express-rate-limit';
 import { isDeliverableEmail } from './utils/orderMail.js';
 import { sendVerificationEmail, sendPasswordResetEmail } from './utils/authMail.js';
 
@@ -58,15 +64,19 @@ const JWT_SECRET = process.env.JWT_SECRET || 'h2r_sports_super_secret';
 
 /** GridFS bucket for marketing videos (survives Render disk wipes) */
 let marketingBucket = null;
+let marketingBucketDb = null;
 
 function getMarketingBucket() {
-  if (!marketingBucket) {
-    if (!mongoose.connection?.db) {
-      throw new Error('MongoDB is not connected yet');
-    }
-    marketingBucket = new GridFSBucket(mongoose.connection.db, {
-      bucketName: 'marketing',
-    });
+  const db = mongoose.connection?.db;
+  if (!db) {
+    throw new Error('MongoDB is not connected yet');
+  }
+  // Re-create the bucket if the underlying Db handle ever changes (e.g. after the driver
+  // recycles the connection following a long idle period) instead of caching it forever —
+  // an old bucket pinned to a stale/closed Db handle would silently fail to serve files.
+  if (!marketingBucket || marketingBucketDb !== db) {
+    marketingBucket = new GridFSBucket(db, { bucketName: 'marketing' });
+    marketingBucketDb = db;
   }
   return marketingBucket;
 }
@@ -209,7 +219,57 @@ function sanitizeProductInput(body, { isCreate = false } = {}) {
 // ─── Express app ─────────────────────────────────────────────────────────────
 const app = express();
 app.set('trust proxy', 1);
-app.use(cors());
+
+// Lock CORS down to known frontend origin(s) once CLIENT_URL is configured. Until then,
+// stay permissive (identical to the previous `cors()` behaviour) so nothing breaks live
+// traffic that hasn't set the env var yet — but the site should set CLIENT_URL before go-live.
+const configuredClientOrigins = String(process.env.CLIENT_URL || '')
+  .split(',')
+  .map((o) => o.trim().replace(/\/$/, ''))
+  .filter(Boolean);
+
+if (configuredClientOrigins.length) {
+  app.use(
+    cors({
+      origin(origin, callback) {
+        // No Origin header = same-origin/non-browser request (curl, webhooks, mobile) — allow.
+        if (!origin || configuredClientOrigins.includes(origin.replace(/\/$/, ''))) {
+          return callback(null, true);
+        }
+        return callback(new Error('Not allowed by CORS'));
+      },
+    })
+  );
+} else {
+  if (process.env.NODE_ENV === 'production') {
+    console.warn(
+      '⚠ CLIENT_URL is not set — CORS is wide open to all origins. Set CLIENT_URL (comma-separated for multiple domains, e.g. https://h2rsports.in,https://www.h2rsports.in) before go-live to restrict it.'
+    );
+  }
+  app.use(cors());
+}
+
+// ─── Rate limiting on auth endpoints ─────────────────────────────────────────
+// Prevents brute-force login/OTP guessing and password-reset/verification email spam.
+// A genuine user retrying a typo a few times will never hit this; scripted abuse will.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Please wait a few minutes and try again.' },
+});
+
+// Pincode lookup is unauthenticated (used while filling the address form) and proxies an
+// external API — rate-limit it so it can't be abused as an open relay / scraping vector.
+const pincodeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many pincode lookups. Please wait a moment.' },
+});
+
 app.use((req, res, next) => {
   if (req.originalUrl === '/api/payments/razorpay/webhook') {
     return express.raw({ type: 'application/json' })(req, res, next);
@@ -333,10 +393,19 @@ function isStatusLive(status, now = new Date()) {
 }
 
 // ─── Order ID generator ───────────────────────────────────────────────────────
-function makeOrderId() {
-  const n = Date.now().toString(36).toUpperCase();
-  const r = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `H2R-${n}-${r}`;
+// Gapless, human-readable sequence (H2R-000001, H2R-000002, ...) instead of a
+// timestamp+random string — makes order numbers scannable/orderable on printed
+// invoices & shipping labels, and satisfies the usual "sequential invoice number"
+// expectation for GST bookkeeping. Counter is seeded once at server boot (see below)
+// so it continues on roughly from however many orders already exist.
+async function makeOrderId() {
+  const seq = await nextSequence('order');
+  return `H2R-${String(seq).padStart(6, '0')}`;
+}
+
+async function makeStoreBillId() {
+  const seq = await nextSequence('storeBill');
+  return `SH-${String(seq).padStart(6, '0')}`;
 }
 
 function toYmd(date) {
@@ -453,9 +522,22 @@ function publicAddresses(user) {
 }
 
 // ─── Auth Routes ──────────────────────────────────────────────────────────────
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
-    const { name, email, password, phone } = req.body;
+    // Cast every field to a string before it touches a Mongo query/document — otherwise
+    // a JSON body like {"email": {"$ne": null}} would be interpreted as a query operator
+    // (NoSQL injection) instead of a literal value.
+    const name = String(req.body?.name || '').trim();
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    const phone = String(req.body?.phone || '');
+
+    if (!name) return res.status(400).json({ error: 'Enter your name' });
+    if (!email) return res.status(400).json({ error: 'Enter a valid email address' });
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
     const userExists = await User.findOne({ email });
     if (userExists) return res.status(400).json({ error: 'User already exists' });
     const cleanPhone = phone ? normalizePhone(phone) : '';
@@ -486,11 +568,13 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email });
-    if (user && (await user.matchPassword(password))) {
+    // Cast to string before querying — see note in /api/auth/register above.
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    const user = email ? await User.findOne({ email }) : null;
+    if (user && password && (await user.matchPassword(password))) {
       const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '30d' });
       res.json(authUserPayload(user, token));
     } else {
@@ -502,7 +586,7 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 /** Checkout phone gate — does this mobile already have an account? */
-app.post('/api/auth/phone/check', async (req, res) => {
+app.post('/api/auth/phone/check', authLimiter, async (req, res) => {
   try {
     const phone = normalizePhone(req.body?.phone);
     if (!isValidIndianPhone(phone)) {
@@ -524,7 +608,7 @@ app.post('/api/auth/phone/check', async (req, res) => {
  * - existing customer → log in
  * - new customer → create with name + phone (basic details)
  */
-app.post('/api/auth/phone/continue', async (req, res) => {
+app.post('/api/auth/phone/continue', authLimiter, async (req, res) => {
   try {
     const phone = normalizePhone(req.body?.phone);
     const name = String(req.body?.name || '').trim();
@@ -586,7 +670,7 @@ app.get('/api/auth/me', protect, (req, res) => {
 });
 
 /** Resend the verification link for the logged-in user's own email. */
-app.post('/api/auth/resend-verification', protect, async (req, res) => {
+app.post('/api/auth/resend-verification', authLimiter, protect, async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
     if (!isDeliverableEmail(user.email)) {
@@ -608,7 +692,7 @@ app.post('/api/auth/resend-verification', protect, async (req, res) => {
 });
 
 /** Confirm an email address via the token from the verification email link. */
-app.post('/api/auth/verify-email', async (req, res) => {
+app.post('/api/auth/verify-email', authLimiter, async (req, res) => {
   try {
     const raw = String(req.body?.token || '').trim();
     if (!raw) return res.status(400).json({ error: 'Missing verification token' });
@@ -635,7 +719,7 @@ app.post('/api/auth/verify-email', async (req, res) => {
 });
 
 /** Start a password reset — always responds success-like to avoid leaking which emails exist. */
-app.post('/api/auth/forgot-password', async (req, res) => {
+app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
   try {
     const email = String(req.body?.email || '').trim().toLowerCase();
     const generic = {
@@ -662,7 +746,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 });
 
 /** Complete a password reset using the token from the reset email link. */
-app.post('/api/auth/reset-password', async (req, res) => {
+app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
   try {
     const raw = String(req.body?.token || '').trim();
     const password = String(req.body?.password || '');
@@ -873,6 +957,69 @@ app.get('/api/store-info', (_req, res) => {
       'UPI & Cards accepted',
     ],
   });
+});
+
+// ─── Pincode → City/State lookup ───────────────────────────────────────────────
+// Free, keyless India Post lookup — used to auto-fill the checkout address form.
+const INDIAN_STATE_NAMES = [
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
+  'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
+  'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram',
+  'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu',
+  'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
+  'Andaman and Nicobar Islands', 'Chandigarh', 'Dadra and Nagar Haveli and Daman and Diu',
+  'Delhi', 'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
+];
+// India Post's own data still uses a few pre-renamed / abbreviated state names.
+const STATE_ALIASES = {
+  orissa: 'Odisha',
+  pondicherry: 'Puducherry',
+  'nct of delhi': 'Delhi',
+  'jammu & kashmir': 'Jammu and Kashmir',
+  uttaranchal: 'Uttarakhand',
+};
+function normalizeStateName(raw) {
+  const clean = String(raw || '').trim();
+  if (!clean) return '';
+  const lower = clean.toLowerCase();
+  if (STATE_ALIASES[lower]) return STATE_ALIASES[lower];
+  const match = INDIAN_STATE_NAMES.find((s) => s.toLowerCase() === lower);
+  return match || clean;
+}
+
+const pincodeCache = new Map(); // in-memory cache — pincode → area data never changes
+
+app.get('/api/utils/pincode/:code', pincodeLimiter, async (req, res) => {
+  const code = String(req.params.code || '').trim();
+  if (!/^\d{6}$/.test(code)) {
+    return res.status(400).json({ found: false, error: 'Enter a valid 6-digit PIN code' });
+  }
+  if (pincodeCache.has(code)) {
+    return res.json(pincodeCache.get(code));
+  }
+  try {
+    const upstream = await fetch(`https://api.postalpincode.in/pincode/${code}`);
+    const data = await upstream.json().catch(() => null);
+    const entry = Array.isArray(data) ? data[0] : null;
+    const office =
+      entry?.Status === 'Success' && Array.isArray(entry.PostOffice) ? entry.PostOffice[0] : null;
+
+    const result = office
+      ? {
+          found: true,
+          pincode: code,
+          city: office.District || office.Block || office.Name || '',
+          state: normalizeStateName(office.State),
+          area: office.Name || '',
+        }
+      : { found: false, pincode: code };
+
+    pincodeCache.set(code, result);
+    return res.json(result);
+  } catch (err) {
+    console.error('Pincode lookup failed:', err.message);
+    return res.status(502).json({ found: false, pincode: code, error: 'Pincode lookup service unavailable' });
+  }
 });
 
 // ─── Collections ──────────────────────────────────────────────────────────────
@@ -1241,12 +1388,66 @@ app.put('/api/admin/notifications/:id/read', protect, admin, async (req, res) =>
   }
 });
 
+// ─── Payment mode (Test ⇄ Live) ─────────────────────────────────────────────────
+app.get('/api/admin/settings/payment', protect, admin, async (_req, res) => {
+  try {
+    const mode = await getPaymentMode();
+    res.json({ mode, ...getPaymentModeStatus() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/settings/payment', protect, admin, async (req, res) => {
+  try {
+    const mode = await setPaymentMode(req.body?.mode, req.user?.name || 'Admin');
+    res.json({ ok: true, mode, ...getPaymentModeStatus() });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// ─── Store return / pickup address (printed on shipping labels) ────────────────
+app.get('/api/admin/settings/store-address', protect, admin, async (_req, res) => {
+  try {
+    const settings = await AppSettings.findOne({ key: 'default' }).lean();
+    res.json({ storeAddress: settings?.storeAddress || {} });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/settings/store-address', protect, admin, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const storeAddress = {
+      name: String(b.name || '').trim() || 'H2R Sports',
+      phone: String(b.phone || '').trim(),
+      line1: String(b.line1 || '').trim(),
+      line2: String(b.line2 || '').trim(),
+      city: String(b.city || '').trim(),
+      state: String(b.state || '').trim(),
+      pincode: String(b.pincode || '').trim(),
+      gstin: String(b.gstin || '').trim(),
+    };
+    const settings = await AppSettings.findOneAndUpdate(
+      { key: 'default' },
+      { $set: { storeAddress } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    res.json({ ok: true, storeAddress: settings.storeAddress });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Orders / Razorpay ─────────────────────────────────────────────────────────
 app.post('/api/payments/razorpay/create', async (req, res) => {
   try {
-    if (!isRazorpayConfigured()) {
+    const mode = await getPaymentMode();
+    if (!isRazorpayConfigured(mode)) {
       return res.status(503).json({
-        error: 'Razorpay is not configured on the server. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.',
+        error: `Razorpay ${mode.toUpperCase()} is not configured on the server. Add RAZORPAY_${mode.toUpperCase()}_KEY_ID and RAZORPAY_${mode.toUpperCase()}_KEY_SECRET.`,
       });
     }
 
@@ -1259,8 +1460,8 @@ app.post('/api/payments/razorpay/create', async (req, res) => {
       return res.status(400).json({ error: 'Order total must be at least ₹1 (100 paise)' });
     }
 
-    const orderId = makeOrderId();
-    const razorpay = getRazorpayClient();
+    const orderId = await makeOrderId();
+    const razorpay = getRazorpayClient(mode);
     const rzpOrder = await razorpay.orders.create({
       amount: amountPaise,
       currency: 'INR',
@@ -1278,6 +1479,7 @@ app.post('/api/payments/razorpay/create', async (req, res) => {
         razorpayOrderId: rzpOrder.id,
         amountPaise,
         currency: 'INR',
+        paymentMode: mode,
         customer: validated.customer,
         shipping: validated.shipping,
         items: lineItems,
@@ -1291,7 +1493,7 @@ app.post('/api/payments/razorpay/create', async (req, res) => {
 
     res.status(201).json({
       ok: true,
-      keyId: getRazorpayKeyId(),
+      keyId: getRazorpayKeyId(mode),
       amount: amountPaise,
       currency: 'INR',
       orderId,
@@ -1318,10 +1520,17 @@ app.post('/api/payments/razorpay/verify', async (req, res) => {
       return res.status(400).json({ error: 'Missing payment verification fields' });
     }
 
+    // Verify against whichever mode this specific order was created under — not necessarily
+    // the admin's *current* toggle — so an in-flight payment always verifies correctly even
+    // if the mode gets switched mid-checkout.
+    const draftForMode = await PendingCheckout.findOne({ orderId, razorpayOrderId }).lean();
+    const mode = draftForMode?.paymentMode || (await getPaymentMode());
+
     const valid = verifyRazorpaySignature({
       razorpayOrderId,
       razorpayPaymentId,
       razorpaySignature,
+      mode,
     });
     if (!valid) {
       return res.status(400).json({ error: 'Payment verification failed' });
@@ -1332,6 +1541,7 @@ app.post('/api/payments/razorpay/verify', async (req, res) => {
       razorpayOrderId,
       razorpayPaymentId,
       razorpaySignature,
+      mode,
       changedBy: 'Checkout',
     });
 
@@ -1350,12 +1560,13 @@ app.post('/api/payments/razorpay/verify', async (req, res) => {
 app.post('/api/payments/razorpay/webhook', async (req, res) => {
   try {
     if (!isRazorpayWebhookConfigured()) {
-      console.warn('Razorpay webhook received but RAZORPAY_WEBHOOK_SECRET is not set');
+      console.warn('Razorpay webhook received but no RAZORPAY_(TEST|LIVE)_WEBHOOK_SECRET is set');
       return res.status(503).json({ error: 'Webhook secret is not configured' });
     }
     const signature = req.get('x-razorpay-signature') || '';
     const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {}));
-    if (!verifyRazorpayWebhookSignature(rawBody, signature)) {
+    const { valid, mode } = verifyRazorpayWebhookSignatureAnyMode(rawBody, signature);
+    if (!valid) {
       return res.status(400).json({ error: 'Invalid webhook signature' });
     }
 
@@ -1379,6 +1590,7 @@ app.post('/api/payments/razorpay/webhook', async (req, res) => {
       razorpayOrderId,
       razorpayPaymentId: razorpayPaymentId || payment.payment_id,
       razorpaySignature: signature,
+      mode,
       changedBy: 'Razorpay webhook',
       note: `Order placed from Razorpay webhook (${type})`,
     });
@@ -1960,12 +2172,48 @@ app.get('/api/media/:id', async (req, res) => {
     }
 
     const file = files[0];
-    res.status(200);
+    const fileSize = Number(file.length) || 0;
     res.setHeader('Content-Type', file.contentType || 'application/octet-stream');
-    if (file.length != null) res.setHeader('Content-Length', String(file.length));
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     res.setHeader('Accept-Ranges', 'bytes');
 
+    // Honour HTTP Range requests (206 Partial Content). Browsers — especially iOS/Safari,
+    // and any browser re-fetching a video after its earlier full-body cache entry has
+    // expired/evicted — request video byte-ranges for seeking/playback. Previously this
+    // route advertised "Accept-Ranges: bytes" but always answered with the full file and a
+    // 200, which many <video> elements reject outright once a real Range request comes in
+    // (this is why a video could "work at first" but silently stop playing later).
+    const rangeHeader = req.headers.range;
+    const rangeMatch = rangeHeader && /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+
+    if (rangeMatch && fileSize > 0) {
+      let start = rangeMatch[1] ? parseInt(rangeMatch[1], 10) : 0;
+      let end = rangeMatch[2] ? parseInt(rangeMatch[2], 10) : fileSize - 1;
+      if (Number.isNaN(start) || start < 0) start = 0;
+      if (Number.isNaN(end) || end > fileSize - 1) end = fileSize - 1;
+
+      if (start > end || start >= fileSize) {
+        res.status(416);
+        res.setHeader('Content-Range', `bytes */${fileSize}`);
+        return res.end();
+      }
+
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+      res.setHeader('Content-Length', String(end - start + 1));
+
+      // GridFS's `end` option is exclusive, so pass end+1 to include the last requested byte.
+      const download = bucket.openDownloadStream(objectId, { start, end: end + 1 });
+      download.on('error', (err) => {
+        console.error('GridFS serve error:', err);
+        if (!res.headersSent) res.status(500).json({ error: 'Failed to load media' });
+        else res.end();
+      });
+      return download.pipe(res);
+    }
+
+    res.status(200);
+    if (fileSize) res.setHeader('Content-Length', String(fileSize));
     const download = bucket.openDownloadStream(objectId);
     download.on('error', (err) => {
       console.error('GridFS serve error:', err);
@@ -2080,10 +2328,20 @@ app.get('/api/admin/store-bills', protect, admin, async (_req, res) => {
   }
 });
 
+app.get('/api/admin/store-bills/:id', protect, admin, async (req, res) => {
+  try {
+    const bill = await StoreBill.findOne({ billId: req.params.id }).lean();
+    if (!bill) return res.status(404).json({ error: 'Store bill not found' });
+    res.json({ bill });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/admin/store-bills', protect, admin, async (req, res) => {
   try {
     const data = sanitizeStoreBillInput(req.body);
-    const billId = `SH-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 900 + 100)}`;
+    const billId = await makeStoreBillId();
     const bill = await StoreBill.create({ ...data, billId });
     res.status(201).json({ ok: true, bill });
   } catch (err) {
@@ -2170,6 +2428,11 @@ async function start() {
     }
     await mongoose.connect(MONGO_URI);
     console.log(`✓ MongoDB connected → ${MONGO_URI}`);
+
+    // Seed the sequential order/bill number counters once, continuing on from however many
+    // already exist (legacy orders keep their old-format IDs; only new ones become sequential).
+    await ensureCounterSeed('order', await Order.countDocuments());
+    await ensureCounterSeed('storeBill', await StoreBill.countDocuments());
 
     if (process.env.NODE_ENV === 'production' && JWT_SECRET === 'h2r_sports_super_secret') {
       console.error('✗ JWT_SECRET is still the default. Set a long random JWT_SECRET on Render before taking live traffic.');

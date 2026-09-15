@@ -57,6 +57,7 @@ export async function fulfillPaidCheckout({
   razorpayOrderId,
   razorpayPaymentId,
   razorpaySignature = '',
+  mode,
   changedBy = 'System',
   note,
 }) {
@@ -82,10 +83,15 @@ export async function fulfillPaidCheckout({
     );
   }
 
+  // The Razorpay order/payment was created under whichever mode was active at the time —
+  // that's stored on the draft, not the admin's *current* toggle, so an in-flight test
+  // payment still fetches/verifies correctly even if the admin flips to Live in between.
+  const paymentMode = mode || draft.paymentMode || 'live';
+
   let method = 'razorpay';
   let paymentDetails = {};
   try {
-    const payment = await getRazorpayClient().payments.fetch(razorpayPaymentId);
+    const payment = await getRazorpayClient(paymentMode).payments.fetch(razorpayPaymentId);
     if (payment.status && !['authorized', 'captured'].includes(payment.status)) {
       throw Object.assign(new Error(`Payment not successful (${payment.status})`), { status: 400 });
     }
@@ -113,6 +119,7 @@ export async function fulfillPaidCheckout({
     paymentMethod: method,
     razorpayOrderId,
     razorpayPaymentId,
+    paymentMode,
     paymentMeta: {
       gateway: 'razorpay',
       razorpayOrderId,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { BRAND, formatINR, INDIAN_STATES, savePercent } from '../utils/india';
 import { api } from '../api/store';
@@ -85,6 +85,8 @@ export default function Checkout() {
   const [payMethod, setPayMethod] = useState('upi');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [pincodeStatus, setPincodeStatus] = useState(''); // '' | 'loading' | 'found' | 'notfound' | 'error'
+  const autoFilledRef = useRef({ city: '', state: '' });
 
   const total = item ? item.price * item.qty : 0;
   const compareAt = item?.compareAt ? Number(item.compareAt) : 0;
@@ -142,6 +144,50 @@ export default function Checkout() {
     };
     boot();
   }, []);
+
+  // Auto-fill City / State from the PIN code (free India Post lookup, proxied server-side).
+  // Never overwrites a field the customer has already typed by hand — only fields that are
+  // empty or still hold the value we ourselves last auto-filled.
+  useEffect(() => {
+    const code = addressForm.pincode;
+    if (!/^\d{6}$/.test(code)) {
+      setPincodeStatus('');
+      return undefined;
+    }
+    let cancelled = false;
+    setPincodeStatus('loading');
+    const timer = setTimeout(async () => {
+      try {
+        const result = await api.lookupPincode(code);
+        if (cancelled) return;
+        if (result?.found) {
+          setAddressForm((f) => {
+            const next = { ...f };
+            if (!f.city.trim() || f.city === autoFilledRef.current.city) {
+              next.city = result.city || f.city;
+            }
+            if (result.state && (!f.state.trim() || f.state === autoFilledRef.current.state)) {
+              next.state = result.state;
+            }
+            return next;
+          });
+          autoFilledRef.current = {
+            city: result.city || autoFilledRef.current.city,
+            state: result.state || autoFilledRef.current.state,
+          };
+          setPincodeStatus('found');
+        } else {
+          setPincodeStatus('notfound');
+        }
+      } catch {
+        if (!cancelled) setPincodeStatus('error');
+      }
+    }, 450);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [addressForm.pincode]);
 
   async function handlePhoneContinue(e) {
     e.preventDefault();
@@ -567,6 +613,24 @@ export default function Checkout() {
                         setAddressForm((f) => ({ ...f, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) }))
                       }
                     />
+                    {pincodeStatus === 'loading' && (
+                      <span className="ck-pin-hint">Looking up location…</span>
+                    )}
+                    {pincodeStatus === 'found' && (
+                      <span className="ck-pin-hint ck-pin-hint--ok">
+                        ✓ {addressForm.city}, {addressForm.state}
+                      </span>
+                    )}
+                    {pincodeStatus === 'notfound' && (
+                      <span className="ck-pin-hint ck-pin-hint--warn">
+                        Couldn't detect this PIN — enter city/state manually
+                      </span>
+                    )}
+                    {pincodeStatus === 'error' && (
+                      <span className="ck-pin-hint ck-pin-hint--warn">
+                        Lookup unavailable — enter city/state manually
+                      </span>
+                    )}
                   </label>
                 </div>
                 <label className="ck-field">

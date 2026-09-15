@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
-import { BRAND } from '../../utils/india';
 import { PAYMENT_STATUS_LABELS } from '../../utils/orderStatus';
+import InvoiceDrawer from '../../components/admin/InvoiceDrawer';
 
 const METHOD_LABELS = { upi: 'UPI', card: 'Card', cod: 'COD' };
 
@@ -129,22 +129,6 @@ export default function Billing() {
 
   return (
     <div className="adm-page">
-      <style>{`
-        @media print {
-          body * { visibility: hidden !important; }
-          .billing-invoice, .billing-invoice * { visibility: visible !important; }
-          .billing-invoice {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            box-shadow: none !important;
-            border: none !important;
-          }
-          .no-print { display: none !important; }
-        }
-      `}</style>
-
       <div className="adm-page__head no-print">
         <div>
           <h1>Customer Billing</h1>
@@ -275,115 +259,7 @@ export default function Billing() {
         )}
       </div>
 
-      {selected && (
-        <div className="adm-drawer-backdrop no-print" onClick={() => setSelected(null)}>
-          <aside className="adm-drawer billing-invoice" onClick={(e) => e.stopPropagation()}>
-            <div className="adm-drawer__head no-print">
-              <strong>Invoice {shortId(selected.orderId)}</strong>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button type="button" className="adm-btn adm-btn--primary" onClick={() => window.print()}>
-                  Print / PDF
-                </button>
-                <button type="button" className="adm-btn adm-btn--ghost" onClick={() => setSelected(null)}>
-                  Close
-                </button>
-              </div>
-            </div>
-            <div className="adm-drawer__body">
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', marginBottom: '1.5rem' }}>
-                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                  <img src={BRAND.logo} alt="" width={44} height={44} />
-                  <div>
-                    <div style={{ fontWeight: 800, color: '#0f172a' }}>{BRAND.name}</div>
-                    <div style={{ fontSize: '0.8rem', color: '#64748b' }}>Tax invoice / payment receipt</div>
-                    <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                      {BRAND.phone} · {BRAND.email}
-                    </div>
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right', fontSize: '0.85rem', color: '#64748b' }}>
-                  <div>{formatDate(selected.createdAt)}</div>
-                  <div style={{ fontWeight: 700, color: '#0f172a' }}>{shortId(selected.orderId)}</div>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
-                <div>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 4 }}>
-                    Billed to
-                  </div>
-                  <div style={{ fontWeight: 700 }}>{selected.customer?.name}</div>
-                  <div style={{ color: '#64748b', fontSize: '0.9rem' }}>{selected.customer?.email}</div>
-                  <div style={{ color: '#64748b', fontSize: '0.9rem' }}>{selected.customer?.phone}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 4 }}>
-                    Ship to
-                  </div>
-                  <div style={{ color: '#334155', lineHeight: 1.5, fontSize: '0.9rem' }}>
-                    {selected.shipping?.addressLine1}
-                    {selected.shipping?.addressLine2 ? <><br />{selected.shipping.addressLine2}</> : null}
-                    <br />
-                    {selected.shipping?.city}, {selected.shipping?.state} — {selected.shipping?.pincode}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '1.25rem' }}>
-                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 4 }}>
-                  Payment
-                </div>
-                <div>
-                  {METHOD_LABELS[selected.paymentMethod] || selected.paymentMethod} ·{' '}
-                  {PAYMENT_STATUS_LABELS[selected.paymentStatus] || selected.paymentStatus}
-                </div>
-                <div style={{ color: '#64748b', fontSize: '0.85rem' }}>{paymentMetaLine(selected)}</div>
-              </div>
-
-              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1rem' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-                    <th style={{ textAlign: 'left', padding: '0.5rem 0', fontSize: '0.72rem', color: '#94a3b8' }}>Item</th>
-                    <th style={{ textAlign: 'center', padding: '0.5rem 0', fontSize: '0.72rem', color: '#94a3b8' }}>Qty</th>
-                    <th style={{ textAlign: 'right', padding: '0.5rem 0', fontSize: '0.72rem', color: '#94a3b8' }}>Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(selected.items || []).map((item, idx) => (
-                    <tr key={`${item.id}-${idx}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '0.75rem 0' }}>
-                        <div style={{ fontWeight: 600 }}>{item.name}</div>
-                        <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-                          {[item.sizeLabel, item.weightLabel].filter(Boolean).join(' · ')}
-                        </div>
-                      </td>
-                      <td style={{ textAlign: 'center', color: '#64748b' }}>{item.qty}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                        {money(item.lineTotal ?? item.price * item.qty)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.3rem 0', color: '#475569' }}>
-                  <span>Subtotal</span>
-                  <span>{money(selected.subtotal ?? selected.total)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.3rem 0', color: '#475569' }}>
-                  <span>Shipping</span>
-                  <span>{money(selected.shippingFee || 0)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.45rem 0', fontWeight: 800, fontSize: '1.05rem' }}>
-                  <span>Total</span>
-                  <span>{money(selected.total)}</span>
-                </div>
-              </div>
-            </div>
-          </aside>
-        </div>
-      )}
+      {selected && <InvoiceDrawer order={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }

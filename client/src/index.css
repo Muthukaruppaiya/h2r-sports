@@ -3982,6 +3982,20 @@ body:has(.pdp-sticky) .float-dock {
   color: var(--ck-ink);
 }
 
+.ck-pin-hint {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.ck-pin-hint--ok {
+  color: #166534;
+}
+
+.ck-pin-hint--warn {
+  color: #9a3412;
+}
+
 .ck-phone {
   display: flex;
   align-items: center;
@@ -7810,6 +7824,683 @@ body:has(.pdp-sticky) .float-dock {
   color: #991b1b;
 }
 
+.adm-pill--warn {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.adm-pill--info {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+/* ——— Orders page ——— */
+.ord-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.85rem 1.2rem;
+  margin: 1.1rem 1.2rem;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 12px;
+  color: #9a3412;
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
+.ord-alert strong {
+  font-weight: 800;
+}
+
+.ord-alert__link {
+  background: #fff;
+  border: 1px solid #fdba74;
+  color: #9a3412;
+  font-weight: 750;
+  font-size: 0.82rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ord-alert__link:hover {
+  background: #fffbeb;
+}
+
+.ord-order-id {
+  font-weight: 750;
+  color: #0f172a;
+  font-size: 0.92rem;
+}
+
+.ord-order-date {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.ord-customer {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.ord-avatar {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+}
+
+.ord-customer__name {
+  font-weight: 700;
+  color: #0f172a;
+  font-size: 0.9rem;
+}
+
+.ord-customer__meta {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  margin-top: 1px;
+}
+
+.ord-items {
+  font-size: 0.85rem;
+  color: #334155;
+  max-width: 220px;
+}
+
+.ord-items__line {
+  margin-bottom: 2px;
+}
+
+.ord-items__spec {
+  color: #94a3b8;
+}
+
+.ord-items__more {
+  display: inline-block;
+  margin-top: 2px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #2563eb;
+  cursor: default;
+}
+
+.ord-pay {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  align-items: flex-start;
+}
+
+.ord-pay__method {
+  font-weight: 750;
+  text-transform: uppercase;
+  font-size: 0.76rem;
+  color: #475569;
+  letter-spacing: 0.03em;
+}
+
+.ord-total {
+  font-weight: 800;
+  color: #0f172a;
+  font-size: 0.95rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ord-status-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 150px;
+}
+
+.ord-advance-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  border: none;
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.ord-advance-btn:hover { transform: translateY(-1px); }
+
+.ord-advance-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+  transform: none;
+}
+
+.ord-cancel-link {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #b91c1c;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.ord-cancel-link:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ord-courier-note {
+  font-size: 0.74rem;
+  color: #4338ca;
+  font-weight: 650;
+}
+
+.ord-done-note {
+  font-size: 0.78rem;
+  color: #94a3b8;
+}
+
+.ord-row-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.ord-toast {
+  position: fixed;
+  top: 1.5rem;
+  right: 1.5rem;
+  z-index: 2000;
+  padding: 0.85rem 1.25rem;
+  border-radius: 10px;
+  color: #fff;
+  font-weight: 650;
+  font-size: 0.9rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  animation: adm-fade-up 0.25s ease;
+}
+
+.ord-toast--success { background: #166534; }
+.ord-toast--error { background: #991b1b; }
+
+.ord-select-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+@media (max-width: 720px) {
+  .ord-alert {
+    margin: 0.9rem;
+  }
+
+  .ord-items {
+    max-width: 160px;
+  }
+}
+
+/* ——— Order detail drawer & courier modal ——— */
+.ord-detail__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 1.1rem;
+  flex-wrap: wrap;
+}
+
+.ord-detail__select {
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  font-weight: 650;
+  font: inherit;
+  font-size: 0.85rem;
+  background: #fff;
+}
+
+.ord-timeline {
+  display: grid;
+  gap: 0.65rem;
+  margin-bottom: 1.2rem;
+}
+
+.ord-timeline__row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.ord-timeline__dot {
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #cbd5e1;
+}
+
+.ord-timeline__dot--done {
+  background: #16a34a;
+}
+
+.ord-timeline__label {
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+.ord-timeline__label--done {
+  color: #0f172a;
+}
+
+.ord-timeline__desc {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.ord-timeline__at {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-top: 1px;
+}
+
+.ord-courier-box {
+  margin-bottom: 1rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 12px;
+  background: #eef2ff;
+}
+
+.ord-courier-box__title {
+  font-weight: 800;
+  color: #3730a3;
+  margin-bottom: 4px;
+}
+
+.ord-courier-box a {
+  color: #4338ca;
+  font-weight: 700;
+}
+
+.ord-detail-section {
+  margin-bottom: 1rem;
+}
+
+.ord-detail-section__label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 4px;
+}
+
+.ord-detail-section__name {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.ord-detail-section__line {
+  color: #64748b;
+}
+
+.ord-detail-address {
+  line-height: 1.55;
+  color: #334155;
+}
+
+.ord-detail-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  color: #334155;
+}
+
+.ord-detail-total {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.ord-modal-copy {
+  margin: 0 0 1rem;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.ord-modal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* ——— Shared printable invoice (Admin → Billing "View bill" / Admin → Orders "Invoice") ——— */
+@media print {
+  /* Force a real A4 sheet with tight margins instead of relying on the printer's/OS's
+     default paper size — this is what was causing the odd split onto a near-empty 2nd page. */
+  @page {
+    size: A4;
+    margin: 8mm 10mm;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .invoice-doc,
+  .invoice-doc * {
+    visibility: visible !important;
+  }
+
+  /* The backdrop is a fixed, full-viewport flex box — reset it to normal flow so the
+     invoice isn't clipped to one screen-height and can paginate across print pages. */
+  .adm-drawer-backdrop {
+    position: static !important;
+    inset: auto !important;
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: none !important;
+    backdrop-filter: none !important;
+  }
+
+  /* Anchor with position: absolute (not static) — the drawer is rendered inline in the
+     page's normal DOM flow, so `static` would print it AFTER all the hidden-but-still-
+     occupying-space content above it (blank leading pages). `absolute` escapes that flow
+     entirely and pins it to the top of the print page instead, since the backdrop above
+     stays un-positioned (static) and won't intercept it as a containing block. */
+  .invoice-doc {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+    animation: none !important;
+    font-size: 12px !important;
+  }
+
+  /* Deterministic px-based tightening below (not rem/em, which stay tied to the root
+     font-size regardless of .invoice-doc's own font-size) so a normal 1-3 item order
+     reliably fits a single A4 page with margin to spare — no more 2nd page. */
+  .invoice-doc .adm-drawer__body {
+    padding: 0 !important;
+  }
+
+  .inv-doc__top {
+    margin-bottom: 10px !important;
+  }
+
+  .inv-doc__brand img {
+    width: 34px !important;
+    height: 34px !important;
+  }
+
+  .inv-doc__brand-name {
+    font-size: 14px !important;
+  }
+
+  .inv-doc__brand-sub,
+  .inv-doc__meta {
+    font-size: 10px !important;
+  }
+
+  /* Only guard multi-line blocks from being split awkwardly — small single-line blocks
+     (totals, footnote) are left free to flow so they can't get shoved onto their own
+     near-empty trailing page when they're just a few px over the boundary. */
+  .inv-doc__parties {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    margin-bottom: 8px !important;
+    gap: 10px !important;
+  }
+
+  .inv-doc__label {
+    font-size: 9px !important;
+    margin-bottom: 2px !important;
+  }
+
+  .inv-doc__name {
+    font-size: 12px !important;
+  }
+
+  .inv-doc__line {
+    font-size: 11px !important;
+    line-height: 1.35 !important;
+  }
+
+  .inv-doc__section {
+    margin-bottom: 8px !important;
+  }
+
+  .inv-doc__table {
+    margin-bottom: 6px !important;
+  }
+
+  .inv-doc__table tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .inv-doc__table th {
+    padding: 4px 0 !important;
+    font-size: 9px !important;
+  }
+
+  .inv-doc__table td {
+    padding: 5px 0 !important;
+    font-size: 11px !important;
+  }
+
+  .inv-doc__item-name {
+    font-size: 11px !important;
+  }
+
+  .inv-doc__item-spec {
+    font-size: 9px !important;
+  }
+
+  .inv-doc__totals {
+    padding-top: 6px !important;
+  }
+
+  .inv-doc__totals-row {
+    padding: 2px 0 !important;
+    font-size: 11px !important;
+  }
+
+  .inv-doc__totals-row--grand {
+    padding: 4px 0 !important;
+    font-size: 13px !important;
+  }
+
+  .inv-doc__footnote {
+    margin: 8px 0 0 !important;
+    font-size: 9px !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}
+
+.inv-doc__head-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.inv-doc__top {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.inv-doc__brand {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.inv-doc__brand-name {
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.inv-doc__brand-sub {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.inv-doc__meta {
+  text-align: right;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.inv-doc__meta-id {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.inv-doc__parties {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.inv-doc__label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 4px;
+}
+
+.inv-doc__name {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.inv-doc__line {
+  color: #64748b;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.inv-doc__section {
+  margin-bottom: 1.25rem;
+}
+
+.inv-doc__table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+}
+
+.inv-doc__table thead tr {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.inv-doc__table th {
+  text-align: left;
+  padding: 0.5rem 0;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+.inv-doc__table td {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+}
+
+.inv-doc__col-qty {
+  text-align: center;
+  width: 60px;
+}
+
+.inv-doc__col-amt {
+  text-align: right;
+  width: 110px;
+  font-weight: 650;
+}
+
+.inv-doc__item-name {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.inv-doc__item-spec {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.inv-doc__totals {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 0.75rem;
+}
+
+.inv-doc__totals-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.3rem 0;
+  color: #475569;
+}
+
+.inv-doc__totals-row--grand {
+  padding: 0.45rem 0;
+  font-weight: 800;
+  font-size: 1.05rem;
+  color: #0f172a;
+}
+
+.inv-doc__footnote {
+  margin: 1rem 0 0;
+  font-size: 0.78rem;
+  color: #94a3b8;
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .inv-doc__parties {
+    grid-template-columns: 1fr;
+  }
+}
+
 .inv-thumb {
   width: 40px;
   height: 40px;
@@ -8357,6 +9048,119 @@ body:has(.pdp-sticky) .float-dock {
   padding-left: 1.1rem;
   color: #374151;
   line-height: 1.7;
+}
+
+.pay-mode {
+  margin: 0.25rem 0 1.5rem;
+  padding: 1.1rem 1.2rem 1.3rem;
+  border: 1px solid var(--zoho-border);
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.pay-mode__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 0.4rem;
+}
+
+.pay-mode__head h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: #0f172a;
+}
+
+.pay-mode__badge {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.pay-mode__badge--test {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.pay-mode__badge--live {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.pay-mode__lead {
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: #475569;
+  margin: 0 0 0.9rem;
+}
+
+.pay-mode__notice {
+  margin: 0 0 0.8rem;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.pay-mode__options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.pay-mode__option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 2px solid var(--zoho-border);
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+  font-family: inherit;
+}
+
+.pay-mode__option:hover:not(:disabled) {
+  border-color: #94a3b8;
+}
+
+.pay-mode__option:disabled {
+  cursor: default;
+}
+
+.pay-mode__option.is-active {
+  border-color: #1d4ed8;
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.12);
+}
+
+.pay-mode__option.is-disabled {
+  opacity: 0.55;
+}
+
+.pay-mode__option-title {
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: #0f172a;
+}
+
+.pay-mode__option-key {
+  font-family: 'Consolas', monospace;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.pay-mode__option-webhook {
+  font-size: 0.75rem;
+  color: #94a3b8;
 }
 
 

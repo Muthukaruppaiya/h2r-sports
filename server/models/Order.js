@@ -61,6 +61,8 @@ const OrderSchema = new mongoose.Schema(
     paymentMeta: { type: mongoose.Schema.Types.Mixed, default: {} },
     razorpayOrderId: { type: String, default: '', index: true },
     razorpayPaymentId: { type: String, default: '' },
+    /** Which Razorpay account (Test or Live) actually processed this payment. */
+    paymentMode: { type: String, enum: ['test', 'live'], default: undefined },
     courier: { type: CourierSchema, default: () => ({}) },
     customer: {
       name:  { type: String, required: true },

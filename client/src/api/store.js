@@ -117,4 +117,9 @@ export const api = {
     const res = await client.get(`/orders/${id}`);
     return res.data;
   },
+
+  async lookupPincode(code) {
+    const res = await client.get(`/utils/pincode/${code}`);
+    return res.data;
+  },
 };

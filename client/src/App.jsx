@@ -36,6 +36,7 @@ import AdminIntegrations from './pages/admin/Integrations';
 import AdminMarketing from './pages/admin/Marketing';
 import AdminBilling from './pages/admin/Billing';
 import AdminStoreBilling from './pages/admin/StoreBilling';
+import AdminStoreBillingForm from './pages/admin/StoreBillingForm';
 import AdminReviews from './pages/admin/Reviews';
 
 function ScrollLock() {
@@ -123,6 +124,8 @@ export default function App() {
           <Route path="marketing" element={<AdminMarketing />} />
           <Route path="billing" element={<AdminBilling />} />
           <Route path="store-billing" element={<AdminStoreBilling />} />
+          <Route path="store-billing/new" element={<AdminStoreBillingForm />} />
+          <Route path="store-billing/:billId/edit" element={<AdminStoreBillingForm />} />
           <Route path="reviews" element={<AdminReviews />} />
           <Route path="integrations" element={<AdminIntegrations />} />
         </Route>

@@ -10,6 +10,8 @@ const PendingCheckoutSchema = new mongoose.Schema(
     razorpayOrderId: { type: String, required: true, unique: true, index: true },
     amountPaise: { type: Number, required: true },
     currency: { type: String, default: 'INR' },
+    /** Which Razorpay account (Test or Live) this draft's order was created under. */
+    paymentMode: { type: String, enum: ['test', 'live'], default: 'live' },
     customer: {
       name: { type: String, required: true },
       phone: { type: String, required: true },
