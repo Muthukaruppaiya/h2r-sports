@@ -88,19 +88,34 @@ function publicApiOrigin(req) {
   ).replace(/\/$/, '');
 }
 
-/** Where the React app is hosted — used to build password-reset / verify-email links. */
+/**
+ * Where the React app is hosted — used to build password-reset / verify-email links.
+ * CLIENT_URL may list several allowed origins (comma-separated, see CORS setup below) once
+ * a store has both a bare domain and a `www.` alias (or an old Netlify subdomain still live) —
+ * so pick whichever one this specific request actually came from, instead of blindly
+ * returning the raw (possibly comma-joined) env var, which would build a broken link like
+ * "https://h2rsports.in,https://www.h2rsports.in/reset-password/...".
+ */
 function resolveClientOrigin(req) {
-  if (process.env.CLIENT_URL) return process.env.CLIENT_URL.replace(/\/$/, '');
-  const origin = req.get('origin') || req.get('referer') || '';
-  if (origin) {
+  const requestOrigin = (() => {
+    const raw = req.get('origin') || req.get('referer') || '';
+    if (!raw) return '';
     try {
-      const u = new URL(origin);
+      const u = new URL(raw);
       return `${u.protocol}//${u.host}`;
     } catch {
-      // fall through to default below
+      return '';
     }
+  })();
+
+  if (configuredClientOrigins.length) {
+    if (requestOrigin && configuredClientOrigins.includes(requestOrigin.replace(/\/$/, ''))) {
+      return requestOrigin;
+    }
+    return configuredClientOrigins[0];
   }
-  return 'http://localhost:5173';
+
+  return requestOrigin || 'http://localhost:5173';
 }
 
 /** Random token for email links — only the SHA-256 hash is stored server-side. */
