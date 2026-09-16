@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { BRAND, formatINR } from '../utils/india';
 import { api } from '../api/store';
+import CourierTracking, { getCourierDetails } from '../components/CourierTracking';
 
 function ConfettiBurst() {
   const pieces = useMemo(
@@ -171,6 +172,12 @@ export default function OrderSuccess() {
               <br />
               {order.customer.email}
             </p>
+            {getCourierDetails(order) ? (
+              <>
+                <h2>Tracking</h2>
+                <CourierTracking order={order} />
+              </>
+            ) : null}
           </section>
         </div>
 

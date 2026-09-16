@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api/client';
 import { api as storeApi } from '../api/store';
 import RevealOnScroll from '../components/RevealOnScroll';
+import CourierTracking, { getCourierDetails } from '../components/CourierTracking';
 import { formatINR, INDIAN_STATES } from '../utils/india';
 import {
   STATUS_STAGES,
@@ -78,7 +79,6 @@ export default function MyOrders() {
   const [profileUpdating, setProfileUpdating] = useState(false);
   const [verifyStatus, setVerifyStatus] = useState('idle'); // idle | sending | sent | error
   const [expandedId, setExpandedId] = useState(null);
-  const [trackingId, setTrackingId] = useState(null);
   const [addresses, setAddresses] = useState([]);
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [addressForm, setAddressForm] = useState(emptyAddress);
@@ -322,15 +322,13 @@ export default function MyOrders() {
                 {orders.map((order) => {
                   const open = expandedId === order.orderId;
                   const statusStyle = getStatusStyle(order.status);
+                  const courier = getCourierDetails(order);
                   return (
                     <article key={order.orderId} className={`acct-order${open ? ' is-open' : ''}`}>
                       <button
                         type="button"
                         className="acct-order__summary"
-                        onClick={() => {
-                          setExpandedId(open ? null : order.orderId);
-                          setTrackingId(null);
-                        }}
+                        onClick={() => setExpandedId(open ? null : order.orderId)}
                       >
                         <div className="acct-order__main">
                           <span className="acct-order__id">
@@ -348,6 +346,7 @@ export default function MyOrders() {
                             {(order.items || []).map((i) => i.name).slice(0, 2).join(' · ')}
                             {(order.items || []).length > 2 ? '…' : ''}
                           </span>
+                          {courier ? <CourierTracking order={order} compact /> : null}
                         </div>
                         <div className="acct-order__side">
                           <strong>{formatINR(order.total)}</strong>
@@ -409,25 +408,13 @@ export default function MyOrders() {
                                 <span>Total</span>
                                 <strong>{formatINR(order.total)}</strong>
                               </div>
-                              {order.status !== 'cancelled' && trackingId !== order.orderId && (
-                                <button
-                                  type="button"
-                                  className="btn btn--primary btn--full"
-                                  onClick={() => setTrackingId(order.orderId)}
-                                >
-                                  Track package
-                                </button>
-                              )}
                             </aside>
                           </div>
 
-                          {trackingId === order.orderId && order.status !== 'cancelled' && (
+                          {order.status !== 'cancelled' && (
                             <div className="acct-track">
                               <div className="acct-track__head">
-                                <h4>Live tracking</h4>
-                                <button type="button" className="acct-link-btn" onClick={() => setTrackingId(null)}>
-                                  Hide
-                                </button>
+                                <h4>Package tracking</h4>
                               </div>
                               <ol className="acct-timeline">
                                 {STATUS_STAGES.map((stage, index) => {
@@ -456,16 +443,12 @@ export default function MyOrders() {
                                   );
                                 })}
                               </ol>
-                              {order.courier?.trackingId && (
-                                <div className="acct-courier">
-                                  <strong>{order.courier.name || 'Courier'}</strong>
-                                  <p>Tracking ID: {order.courier.trackingId}</p>
-                                  {order.courier.trackingUrl ? (
-                                    <a href={order.courier.trackingUrl} target="_blank" rel="noreferrer">
-                                      Track shipment →
-                                    </a>
-                                  ) : null}
-                                </div>
+                              {courier ? (
+                                <CourierTracking order={order} />
+                              ) : (
+                                <p className="acct-track__pending">
+                                  Courier details will appear here once the shop ships your order.
+                                </p>
                               )}
                             </div>
                           )}
