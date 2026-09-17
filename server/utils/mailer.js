@@ -1,4 +1,15 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import nodemailer from 'nodemailer';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const LOGO_CANDIDATES = [
+  path.join(__dirname, '..', '..', 'client', 'public', 'h2r-crest.png'),
+  path.join(__dirname, '..', 'public', 'h2r-crest.png'),
+];
+const LOGO_PATH = LOGO_CANDIDATES.find((p) => fs.existsSync(p)) || '';
+export const LOGO_CID = 'h2r-logo';
 
 export const STORE_EMAIL = process.env.STORE_EMAIL || 'h2rsports7@gmail.com';
 export const STORE_PHONE = process.env.STORE_PHONE || '+91 99949 78963';
@@ -45,11 +56,19 @@ export function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
+export function brandLogoHtml() {
+  if (!LOGO_PATH) {
+    return `<p style="margin:0 0 4px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#c8102e;">H2R Sports</p>`;
+  }
+  return `<img src="cid:${LOGO_CID}" alt="H2R Sports" width="64" height="64" style="display:block;width:64px;height:64px;border:0;margin:0 0 12px;" />`;
+}
+
 /** Shared branded wrapper for one-off account emails (verification, password reset, etc). */
 export function wrapSimpleEmail({ title, bodyHtml }) {
   return `<!DOCTYPE html>
 <html><body style="margin:0;padding:0;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#0a2540;">
   <div style="max-width:560px;margin:24px auto;background:#ffffff;border:1px solid #e5e7eb;padding:28px;">
+    ${brandLogoHtml()}
     <p style="margin:0 0 4px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#c8102e;">H2R Sports</p>
     <h1 style="margin:0 0 16px;font-size:22px;">${escapeHtml(title)}</h1>
     ${bodyHtml}
@@ -58,6 +77,18 @@ export function wrapSimpleEmail({ title, bodyHtml }) {
     </p>
   </div>
 </body></html>`;
+}
+
+export function logoAttachment() {
+  if (!LOGO_PATH) return [];
+  return [
+    {
+      filename: 'h2r-crest.png',
+      path: LOGO_PATH,
+      cid: LOGO_CID,
+      contentType: 'image/png',
+    },
+  ];
 }
 
 export async function sendMail({ to, bcc, subject, html, text }) {
@@ -75,6 +106,7 @@ export async function sendMail({ to, bcc, subject, html, text }) {
       subject,
       text,
       html,
+      attachments: logoAttachment(),
     });
     return { sent: true, to, bcc: bcc || null };
   } catch (err) {
