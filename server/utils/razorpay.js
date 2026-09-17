@@ -13,7 +13,7 @@ function detectModeFromKeyId(keyId) {
 }
 
 function normalizeMode(mode) {
-  return VALID_MODES.includes(mode) ? mode : 'test';
+  return VALID_MODES.includes(mode) ? mode : 'live';
 }
 
 /**
@@ -52,19 +52,49 @@ let cachedMode = null;
 
 export async function getPaymentMode() {
   if (cachedMode) return cachedMode;
+  if (isRazorpayConfigured('live')) {
+    cachedMode = 'live';
+    return cachedMode;
+  }
   try {
     const settings = await AppSettings.findOne({ key: 'default' }).lean();
-    cachedMode = settings?.paymentMode === 'live' ? 'live' : 'test';
+    cachedMode = settings?.paymentMode === 'test' && isRazorpayConfigured('test') ? 'test' : 'live';
   } catch {
-    cachedMode = 'test';
+    cachedMode = isRazorpayConfigured('test') ? 'test' : 'live';
   }
   return cachedMode;
 }
 
+/** Persist Live in Mongo so admin UI and checkout stay on real Razorpay keys. */
+export async function ensureLivePaymentMode() {
+  if (!isRazorpayConfigured('live')) {
+    console.warn(
+      '⚠ Razorpay LIVE keys are missing. Set RAZORPAY_LIVE_KEY_ID / RAZORPAY_LIVE_KEY_SECRET (or legacy RAZORPAY_KEY_ID starting with rzp_live_).'
+    );
+    return 'test';
+  }
+  cachedMode = null;
+  await AppSettings.findOneAndUpdate(
+    { key: 'default' },
+    {
+      paymentMode: 'live',
+      paymentModeChangedAt: new Date(),
+      paymentModeChangedBy: 'Server boot',
+    },
+    { upsert: true, setDefaultsOnInsert: true }
+  );
+  cachedMode = 'live';
+  console.log('✓ Razorpay checkout mode: LIVE');
+  return 'live';
+}
+
 export async function setPaymentMode(mode, changedBy = 'Admin') {
   const m = normalizeMode(mode);
-  if (mode !== 'test' && mode !== 'live') {
-    throw Object.assign(new Error('Payment mode must be "test" or "live"'), { status: 400 });
+  if (mode === 'test') {
+    throw Object.assign(
+      new Error('This store is live-only. Checkout uses Razorpay LIVE keys.'),
+      { status: 400 }
+    );
   }
   const creds = getModeCredentials(m);
   if (!creds.keyId || !creds.keySecret) {

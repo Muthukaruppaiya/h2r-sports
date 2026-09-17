@@ -77,11 +77,9 @@ export default function Integrations() {
       );
       return;
     }
-    if (mode === 'live') {
-      const ok = window.confirm(
-        'Switch to LIVE payments? Every checkout from now on will charge real money through your live Razorpay account. Make sure you have tested checkout fully in Test mode first.'
-      );
-      if (!ok) return;
+    if (mode === 'test') {
+      setError('This store is live-only. Checkout always uses Razorpay LIVE keys.');
+      return;
     }
     setSwitching(true);
     setError('');
@@ -111,10 +109,7 @@ export default function Integrations() {
           )}
         </div>
         <p className="pay-mode__lead">
-          Controls whether checkout charges customers through your <strong>Test</strong> Razorpay account
-          (fake money, safe to click through) or your <strong>Live</strong> account (real money). Switching
-          here takes effect immediately for every new checkout — in-flight payments started before the
-          switch still complete correctly under whichever mode they began in.
+          Checkout is locked to <strong>Razorpay LIVE</strong> (real money). Test mode is disabled for this store.
         </p>
 
         {loading ? (
@@ -136,7 +131,7 @@ export default function Integrations() {
                       !info?.configured ? ' is-disabled' : ''
                     }`}
                     onClick={() => switchMode(mode)}
-                    disabled={switching || active || !info?.configured}
+                    disabled={switching || active || !info?.configured || mode === 'test'}
                   >
                     <span className="pay-mode__option-title">
                       {mode === 'live' ? 'Live' : 'Test'}

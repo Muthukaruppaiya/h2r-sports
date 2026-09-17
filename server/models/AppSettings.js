@@ -21,7 +21,7 @@ const StoreAddressSchema = new mongoose.Schema(
 const AppSettingsSchema = new mongoose.Schema(
   {
     key: { type: String, default: 'default', unique: true },
-    paymentMode: { type: String, enum: ['test', 'live'], default: 'test' },
+    paymentMode: { type: String, enum: ['test', 'live'], default: 'live' },
     paymentModeChangedAt: { type: Date, default: null },
     paymentModeChangedBy: { type: String, default: '' },
     /** Return / pickup address printed on shipping labels ("Ship From"). */

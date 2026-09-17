@@ -36,6 +36,7 @@ import {
   getPaymentMode,
   setPaymentMode,
   getPaymentModeStatus,
+  ensureLivePaymentMode,
 } from './utils/razorpay.js';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
@@ -2448,6 +2449,7 @@ async function start() {
     // already exist (legacy orders keep their old-format IDs; only new ones become sequential).
     await ensureCounterSeed('order', await Order.countDocuments());
     await ensureCounterSeed('storeBill', await StoreBill.countDocuments());
+    await ensureLivePaymentMode();
 
     if (process.env.NODE_ENV === 'production' && JWT_SECRET === 'h2r_sports_super_secret') {
       console.error('✗ JWT_SECRET is still the default. Set a long random JWT_SECRET on Render before taking live traffic.');
