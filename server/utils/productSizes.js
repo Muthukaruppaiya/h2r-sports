@@ -25,10 +25,13 @@ export function uniquifySizes(sizes = []) {
         n += 1;
       }
       seen.add(candidate);
+      const stockRaw = s?.stock;
+      const stockNum = Math.floor(Number(stockRaw));
       return {
         id: candidate,
         label,
         price: Number(s?.price) || 0,
+        stock: Number.isFinite(stockNum) ? Math.max(0, stockNum) : 0,
       };
     })
     .filter((s) => s.label);
@@ -49,5 +52,11 @@ export function resolveProductSize(product, item = {}) {
 
 export function sizesNeedRewrite(original = [], next = []) {
   if (!Array.isArray(original) || original.length !== next.length) return true;
-  return original.some((s, i) => String(s?.id) !== next[i].id || String(s?.label) !== next[i].label);
+  return original.some(
+    (s, i) =>
+      String(s?.id) !== next[i].id ||
+      String(s?.label) !== next[i].label ||
+      s?.stock === undefined ||
+      s?.stock === null
+  );
 }

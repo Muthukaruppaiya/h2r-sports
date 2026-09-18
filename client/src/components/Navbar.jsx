@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { BRAND } from '../utils/india';
 import { api } from '../api/store';
+import { cartCount } from '../utils/checkoutItem';
 
 const Icon = {
   home: (
@@ -110,6 +111,7 @@ export default function Navbar() {
   const [signedIn, setSignedIn] = useState(false);
   const [userName, setUserName] = useState('');
   const [navCollections, setNavCollections] = useState(FALLBACK_COLLECTIONS);
+  const [bagCount, setBagCount] = useState(() => cartCount());
   const inputRef = useRef(null);
   const navigate = useNavigate();
 
@@ -117,6 +119,17 @@ export default function Navbar() {
     const onScroll = () => setScrolled(window.scrollY > 8);
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    const syncBag = () => setBagCount(cartCount());
+    syncBag();
+    window.addEventListener('h2r-cart', syncBag);
+    window.addEventListener('storage', syncBag);
+    return () => {
+      window.removeEventListener('h2r-cart', syncBag);
+      window.removeEventListener('storage', syncBag);
+    };
   }, []);
 
   useEffect(() => {
@@ -227,6 +240,7 @@ export default function Navbar() {
             <p className="navbar__group-label">Browse</p>
             <NavItem to="/" end onClick={close} icon={Icon.home} label="Home" hint="Shop & offers" />
             <NavItem to="/shop" onClick={close} icon={Icon.shop} label="All Products" hint="Full bat catalogue" />
+            <NavItem to="/checkout" onClick={close} icon={Icon.shop} label="Your bag" hint={bagCount ? `${bagCount} bat(s)` : 'Checkout'} />
           </div>
 
           <div className="navbar__group">
@@ -313,6 +327,13 @@ export default function Navbar() {
         </nav>
 
         <div className="navbar__actions">
+          <Link to="/checkout" className="navbar__bag" aria-label="Checkout bag">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M6 8h12l-1 12H7L6 8z" stroke="currentColor" strokeWidth="2" />
+              <path d="M9 8V7a3 3 0 0 1 6 0v1" stroke="currentColor" strokeWidth="2" />
+            </svg>
+            {bagCount > 0 ? <span className="navbar__bag-count">{bagCount}</span> : null}
+          </Link>
           <button
             type="button"
             className="navbar__search-btn"

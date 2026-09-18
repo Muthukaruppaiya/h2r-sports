@@ -74,7 +74,15 @@ export default function StoreBilling() {
         if (t > end.getTime()) return false;
       }
       if (!q) return true;
-      const hay = [b.billId, b.customerName, b.customerPhone, b.itemName, b.sizeLabel, b.weightLabel]
+      const hay = [
+        b.billId,
+        b.customerName,
+        b.customerPhone,
+        b.itemName,
+        b.sizeLabel,
+        b.weightLabel,
+        ...(b.items || []).map((line) => line.itemName),
+      ]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -187,9 +195,11 @@ export default function StoreBilling() {
                       <td>
                         <div style={{ fontWeight: 600 }}>{bill.itemName}</div>
                         <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-                          {[bill.sizeLabel, bill.weightLabel, bill.qty ? `Qty ${bill.qty}` : '']
-                            .filter(Boolean)
-                            .join(' · ')}
+                          {Array.isArray(bill.items) && bill.items.length > 1
+                            ? bill.items.map((line) => `${line.qty}× ${line.itemName}`).join(', ')
+                            : [bill.sizeLabel, bill.weightLabel, bill.qty ? `Qty ${bill.qty}` : '']
+                                .filter(Boolean)
+                                .join(' · ')}
                         </div>
                       </td>
                       <td>{money(bill.discount || 0)}</td>

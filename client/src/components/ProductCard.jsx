@@ -1,14 +1,22 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { formatINR } from '../utils/india';
 import { mediaUrl } from '../config/api.js';
-import { setBuyNowItem } from '../utils/checkoutItem';
+import { addCartItem } from '../utils/checkoutItem';
+
+function productIsInStock(product) {
+  if (product?.inStock === false) return false;
+  const sizes = product?.sizes || [];
+  if (!sizes.length) return true;
+  return sizes.some((s) => Math.floor(Number(s.stock) || 0) > 0);
+}
 
 export default function ProductCard({ product }) {
   const navigate = useNavigate();
-  const defaultSize = product.sizes?.[0];
+  const inStock = productIsInStock(product);
+  const defaultSize =
+    product.sizes?.find((s) => Math.floor(Number(s.stock) || 0) > 0) || product.sizes?.[0];
   const primary = mediaUrl(product.image || product.images?.[0] || '/products/placeholders/front.svg');
   const imageCount = product.images?.length || 0;
-  const inStock = product.inStock !== false;
 
   const buyNow = () => {
     if (!inStock) return;
@@ -19,7 +27,7 @@ export default function ProductCard({ product }) {
           ? `${defaultWeight.from}g – ${defaultWeight.to}g`
           : '')
       : '';
-    setBuyNowItem({
+    addCartItem({
       id: product.id,
       name: product.name,
       image: product.images?.[0] || product.image || '',

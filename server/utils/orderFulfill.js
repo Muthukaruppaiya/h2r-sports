@@ -3,6 +3,7 @@ import PendingCheckout from '../models/PendingCheckout.js';
 import Notification from '../models/Notification.js';
 import { getRazorpayClient, mapRazorpayMethod } from './razorpay.js';
 import { sendOrderEmail } from './orderMail.js';
+import { decrementStock, restoreStock } from './stock.js';
 
 function publicOrder(orderDoc) {
   const order = orderDoc?.toObject ? orderDoc.toObject() : orderDoc;
@@ -111,8 +112,12 @@ export async function fulfillPaidCheckout({
     console.warn('Razorpay payment fetch skipped:', fetchErr.message);
   }
 
+  await decrementStock(draft.items);
+
   const now = new Date();
-  const order = await Order.create({
+  let order;
+  try {
+    order = await Order.create({
     orderId: draft.orderId,
     status: 'ordered',
     paymentStatus: 'paid',
@@ -148,7 +153,12 @@ export async function fulfillPaidCheckout({
     subtotal: draft.subtotal,
     shippingFee: draft.shippingFee || 0,
     total: draft.total,
+    stockDecremented: true,
   });
+  } catch (err) {
+    await restoreStock(draft.items);
+    throw err;
+  }
 
   await PendingCheckout.deleteOne({ _id: draft._id });
   await notifyNewOrder(order, draft);

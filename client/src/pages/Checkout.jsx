@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { BRAND, formatINR, INDIAN_STATES, savePercent } from '../utils/india';
 import { api } from '../api/store';
-import { clearBuyNowItem, getBuyNowItem } from '../utils/checkoutItem';
+import { clearBuyNowItem, getCart, removeCartItem, updateCartQty } from '../utils/checkoutItem';
 import { buildRazorpayOptions, openRazorpayCheckout } from '../utils/razorpay';
 import { mediaUrl } from '../config/api.js';
 
@@ -71,7 +71,7 @@ function Stepper({ active }) {
 
 export default function Checkout() {
   const navigate = useNavigate();
-  const [item, setItem] = useState(() => getBuyNowItem());
+  const [items, setItems] = useState(() => getCart());
   const [bootstrapping, setBootstrapping] = useState(true);
   const [step, setStep] = useState('phone'); // phone | register | address | summary | payment | loading
   const [user, setUser] = useState(null);
@@ -88,12 +88,16 @@ export default function Checkout() {
   const [pincodeStatus, setPincodeStatus] = useState(''); // '' | 'loading' | 'found' | 'notfound' | 'error'
   const autoFilledRef = useRef({ city: '', state: '' });
 
-  const total = item ? item.price * item.qty : 0;
-  const compareAt = item?.compareAt ? Number(item.compareAt) : 0;
+  const total = items.reduce((sum, row) => sum + row.price * row.qty, 0);
+  const compareAt = items.reduce((sum, row) => {
+    const mrp = row.compareAt ? Number(row.compareAt) * row.qty : row.price * row.qty;
+    return sum + mrp;
+  }, 0);
   const discount = compareAt > total ? compareAt - total : 0;
-  const savePct = savePercent(item?.price || 0, compareAt || 0);
+  const savePct = savePercent(total, compareAt);
   const shippingFee = 0;
   const payable = total + shippingFee;
+  const bagLabel = items.map((row) => row.name).filter(Boolean).join(', ') || 'H2R bats';
   const selectedAddress = useMemo(
     () => addresses.find((a) => a.id === selectedAddressId) || addresses.find((a) => a.isDefault) || addresses[0],
     [addresses, selectedAddressId]
@@ -101,9 +105,9 @@ export default function Checkout() {
 
   useEffect(() => {
     const boot = async () => {
-      const buy = getBuyNowItem();
-      setItem(buy);
-      if (!buy) {
+      const buy = getCart();
+      setItems(buy);
+      if (!buy.length) {
         setBootstrapping(false);
         return;
       }
@@ -290,7 +294,7 @@ export default function Checkout() {
   }
 
   async function startPayment() {
-    if (!item || !selectedAddress || !user) return;
+    if (!items.length || !selectedAddress || !user) return;
     setError('');
     setStep('loading');
     setSubmitting(true);
@@ -308,15 +312,13 @@ export default function Checkout() {
         state: selectedAddress.state,
         pincode: selectedAddress.pincode,
       },
-      items: [
-        {
-          id: item.id,
-          sizeId: item.sizeId,
-          sizeLabel: item.sizeLabel || '',
-          weightId: item.weightId || '',
-          qty: item.qty,
-        },
-      ],
+      items: items.map((row) => ({
+          id: row.id,
+          sizeId: row.sizeId,
+          sizeLabel: row.sizeLabel || '',
+          weightId: row.weightId || '',
+          qty: row.qty,
+        })),
     };
 
     try {
@@ -335,7 +337,7 @@ export default function Checkout() {
           email: orderEmail.trim().toLowerCase(),
           contact: formatPhoneForRazorpay(selectedAddress.phone || user.phone),
         },
-        productLabel: `${item.name}${item.sizeLabel ? ` · ${item.sizeLabel}` : ''}`,
+        productLabel: bagLabel,
         onSuccess: async (response) => {
           setStep('loading');
           try {
@@ -357,7 +359,7 @@ export default function Checkout() {
                 paymentId: response.razorpay_payment_id || '',
                 orderRef: data.orderId || '',
                 amount: payable,
-                productLabel: `${item.name}${item.sizeLabel ? ` · ${item.sizeLabel}` : ''}`,
+                productLabel: bagLabel,
                 reason: verifyErr.response?.data?.error || '',
               },
             });
@@ -382,7 +384,7 @@ export default function Checkout() {
               reason,
               orderRef: data.orderId || '',
               amount: payable,
-              productLabel: `${item.name}${item.sizeLabel ? ` · ${item.sizeLabel}` : ''}`,
+              productLabel: bagLabel,
             },
           });
         },
@@ -405,12 +407,12 @@ export default function Checkout() {
     );
   }
 
-  if (!item) {
+  if (!items.length) {
     return (
       <main className="ck-flow">
         <div className="ck-empty">
-          <h1>No product selected</h1>
-          <p>Choose a bat and tap Buy now to checkout.</p>
+          <h1>No bats in your bag</h1>
+          <p>Add one or more bats, then checkout together.</p>
           <Link to="/shop" className="ck-btn ck-btn--primary">
             Browse bats
           </Link>
@@ -727,22 +729,41 @@ export default function Checkout() {
 
           <div className="ck-card ck-product">
             {savePct ? <span className="ck-product__deal">Hot Deal</span> : null}
-            <div className="ck-product__row">
-              <img src={mediaUrl(item.image) || '/products/placeholders/front.svg'} alt="" />
-              <div>
-                <strong>{item.name}</strong>
-                <span>
-                  {item.sizeLabel}
-                  {item.weightLabel ? ` · ${item.weightLabel}` : ''}
-                </span>
-                <span>Qty: {item.qty}</span>
-                <div className="ck-product__price">
-                  {savePct ? <em>↓{savePct}%</em> : null}
-                  {compareAt > total ? <s>{formatINR(compareAt)}</s> : null}
-                  <b>{formatINR(total)}</b>
+            {items.map((row) => (
+              <div key={row.key} className="ck-product__row">
+                <img src={mediaUrl(row.image) || '/products/placeholders/front.svg'} alt="" />
+                <div>
+                  <strong>{row.name}</strong>
+                  <span>
+                    {row.sizeLabel}
+                    {row.weightLabel ? ` · ${row.weightLabel}` : ''}
+                  </span>
+                  <label className="ck-qty">
+                    Qty
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={row.qty}
+                      onChange={(e) => setItems(updateCartQty(row.key, e.target.value))}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="ck-link"
+                    onClick={() => setItems(removeCartItem(row.key))}
+                  >
+                    Remove
+                  </button>
+                  <div className="ck-product__price">
+                    <b>{formatINR(row.price * row.qty)}</b>
+                  </div>
                 </div>
               </div>
-            </div>
+            ))}
+            <Link to="/shop" className="ck-link" style={{ marginTop: 10, display: 'inline-block' }}>
+              + Add another bat
+            </Link>
           </div>
 
           <div className="ck-card">

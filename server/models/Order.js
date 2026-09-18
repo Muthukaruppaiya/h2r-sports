@@ -93,6 +93,8 @@ const OrderSchema = new mongoose.Schema(
       confirmedAt: { type: Date },
       paidAt:      { type: Date },
     },
+    stockDecremented: { type: Boolean, default: false },
+    stockRestored: { type: Boolean, default: false },
     statusHistory: [{
       from:      { type: String },
       to:        { type: String, required: true },

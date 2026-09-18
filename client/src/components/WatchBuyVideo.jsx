@@ -71,12 +71,25 @@ export default function WatchBuyVideo({
   const [pos, setPos] = useState(() => readSavedPos());
   const [dragging, setDragging] = useState(false);
 
+  const [bust, setBust] = useState(0);
+
   const currentVideo = videos[videoIndex];
-  const src = mediaUrl(currentVideo?.videoUrl);
-  const fallbackSrc = currentVideo?.videoUrl ? mediaUrl(currentVideo.videoUrl) : '';
+  const rawSrc = mediaUrl(currentVideo?.videoUrl);
+  const src = rawSrc ? `${rawSrc}${bust ? `${rawSrc.includes('?') ? '&' : '?'}v=${bust}` : ''}` : '';
   const buyPath = currentVideo?.productPath || productPath;
   const buyName = currentVideo?.productName || productName;
   const isFree = Boolean(pos);
+
+  const handleVideoError = () => {
+    if (!bust) {
+      setBust(Date.now());
+      return;
+    }
+    if (videos.length > 1) {
+      setVideoIndex((prev) => (prev + 1) % videos.length);
+      setBust(0);
+    }
+  };
 
   useEffect(() => {
     const isBrowse =
@@ -102,7 +115,7 @@ export default function WatchBuyVideo({
     let mounted = true;
     const fetchConfig = async () => {
       try {
-        const res = await fetch(apiUrl('/marketing/public'));
+        const res = await fetch(apiUrl('/marketing/public'), { cache: 'no-store' });
         const data = await res.json();
         if (!mounted) return;
         const list = (data.floatingVideos || []).filter((v) => v.videoUrl);
@@ -297,12 +310,7 @@ export default function WatchBuyVideo({
                 draggable={false}
                 onLoadedData={(e) => tryPlay(e.currentTarget)}
                 onCanPlay={(e) => tryPlay(e.currentTarget)}
-                onError={(e) => {
-                  if (fallbackSrc && e.currentTarget.src !== fallbackSrc) {
-                    e.currentTarget.src = fallbackSrc;
-                    tryPlay(e.currentTarget);
-                  }
-                }}
+                onError={handleVideoError}
               />
             </div>
             <span className="watchbuy__tap-hint">Drag · Tap</span>
@@ -337,12 +345,7 @@ export default function WatchBuyVideo({
                 controls
                 onLoadedData={(e) => tryPlay(e.currentTarget)}
                 onCanPlay={(e) => tryPlay(e.currentTarget)}
-                onError={(e) => {
-                  if (fallbackSrc && e.currentTarget.src !== fallbackSrc) {
-                    e.currentTarget.src = fallbackSrc;
-                    tryPlay(e.currentTarget);
-                  }
-                }}
+                onError={handleVideoError}
               />
             </div>
 

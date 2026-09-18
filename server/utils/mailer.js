@@ -13,15 +13,25 @@ export const LOGO_CID = 'h2r-logo';
 
 export const STORE_EMAIL = process.env.STORE_EMAIL || 'h2rsports7@gmail.com';
 export const STORE_PHONE = process.env.STORE_PHONE || '+91 99949 78963';
-const SMTP_USER = process.env.SMTP_USER || '';
-const SMTP_PASS = process.env.SMTP_PASS || '';
-export const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER;
-const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
-const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
 
 const PLACEHOLDER_EMAIL = /@phone\.h2rsports\.in$/i;
 
 let transporter = null;
+let transporterKey = '';
+
+function smtpConfig() {
+  const user = String(process.env.SMTP_USER || '').trim();
+  const pass = String(process.env.SMTP_PASS || '').replace(/\s+/g, '');
+  const host = String(process.env.SMTP_HOST || 'smtp.gmail.com').trim();
+  const port = Number(process.env.SMTP_PORT || 587);
+  const from = String(process.env.SMTP_FROM || user).trim();
+  return { user, pass, host, port, from };
+}
+
+export function isMailConfigured() {
+  const { user, pass } = smtpConfig();
+  return Boolean(user && pass);
+}
 
 /** Phone-checkout accounts get a synthetic @phone.h2rsports.in email — never mail those. */
 export function isDeliverableEmail(email) {
@@ -31,18 +41,18 @@ export function isDeliverableEmail(email) {
   return true;
 }
 
-export function isMailConfigured() {
-  return Boolean(SMTP_USER && SMTP_PASS);
-}
-
 export function getTransporter() {
-  if (!isMailConfigured()) return null;
-  if (!transporter) {
+  const { user, pass, host, port } = smtpConfig();
+  if (!user || !pass) return null;
+  const key = `${host}:${port}:${user}:${pass.length}`;
+  if (!transporter || transporterKey !== key) {
+    transporterKey = key;
     transporter = nodemailer.createTransport({
-      host: SMTP_HOST,
-      port: SMTP_PORT,
-      secure: SMTP_PORT === 465,
-      auth: { user: SMTP_USER, pass: SMTP_PASS },
+      host,
+      port,
+      secure: port === 465,
+      requireTLS: port === 587,
+      auth: { user, pass },
     });
   }
   return transporter;
@@ -93,13 +103,14 @@ export function logoAttachment() {
 
 export async function sendMail({ to, bcc, subject, html, text }) {
   const mailer = getTransporter();
+  const { from } = smtpConfig();
   if (!mailer) {
-    console.warn('Email skipped: set SMTP_USER and SMTP_PASS on the sending mailbox (not the client Gmail).');
+    console.warn('Email skipped: set SMTP_USER and SMTP_PASS on Render (Gmail App Password).');
     return { sent: false, reason: 'not-configured' };
   }
   try {
     await mailer.sendMail({
-      from: `H2R Sports <${SMTP_FROM}>`,
+      from: `H2R Sports <${from}>`,
       to,
       bcc,
       replyTo: STORE_EMAIL,
@@ -110,7 +121,7 @@ export async function sendMail({ to, bcc, subject, html, text }) {
     });
     return { sent: true, to, bcc: bcc || null };
   } catch (err) {
-    console.warn('Email failed:', err.message);
+    console.warn('Email failed:', err.message, err.code || '', err.response || '');
     return { sent: false, reason: err.message };
   }
 }

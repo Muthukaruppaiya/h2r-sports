@@ -98,7 +98,7 @@ export default function VideoShowcase() {
 
   useEffect(() => {
     let mounted = true;
-    fetch(apiUrl('/marketing/public'))
+    fetch(apiUrl('/marketing/public'), { cache: 'no-store' })
       .then((r) => r.json())
       .then((data) => {
         if (!mounted) return;

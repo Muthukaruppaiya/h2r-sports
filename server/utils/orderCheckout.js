@@ -1,5 +1,6 @@
 import Product from '../models/Product.js';
 import { resolveProductSize } from './productSizes.js';
+import { sizeStock } from './stock.js';
 
 const MAX_QTY = 10;
 
@@ -28,7 +29,11 @@ export async function buildLineItemsFromRequest(items = []) {
     const weightLabel = weight
       ? weight.label || `${weight.from}g – ${weight.to}g`
       : product.weight || '';
-    const qty = Math.min(MAX_QTY, Math.max(1, Number(item.qty) || 1));
+    const available = sizeStock(size);
+    if (available < 1) {
+      throw Object.assign(new Error(`${product.name} (${size.label}) is out of stock`), { status: 400 });
+    }
+    const qty = Math.min(MAX_QTY, available, Math.max(1, Number(item.qty) || 1));
     const lineTotal = size.price * qty;
     subtotal += lineTotal;
     lineItems.push({

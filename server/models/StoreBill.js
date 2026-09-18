@@ -26,7 +26,8 @@ const StoreBillSchema = new mongoose.Schema(
       default: 'cash',
     },
     soldAt: { type: Date, default: Date.now },
-    notes: { type: String, default: '', trim: true },
+    items: { type: Array, default: [] },
+    stockDecremented: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

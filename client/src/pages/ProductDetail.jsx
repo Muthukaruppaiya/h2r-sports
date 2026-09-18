@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { formatINR, INDIA, BRAND } from '../utils/india';
 import { buildWhatsAppOrderUrl } from '../utils/whatsapp';
-import { setBuyNowItem } from '../utils/checkoutItem';
+import { addCartItem } from '../utils/checkoutItem';
 import ProductGallery from '../components/ProductGallery';
 import WriteReview from '../components/WriteReview';
 import RevealOnScroll from '../components/RevealOnScroll';
@@ -16,6 +16,7 @@ export default function ProductDetail() {
   const [weightId, setWeightId] = useState('');
   const [qty, setQty] = useState(1);
   const [error, setError] = useState('');
+  const [addedNote, setAddedNote] = useState('');
   const [descOpen, setDescOpen] = useState(false);
 
   useEffect(() => {
@@ -27,7 +28,11 @@ export default function ProductDetail() {
       .then((data) => {
         if (cancelled) return;
         setProduct(data);
-        setSizeId(data.sizes?.[0]?.id || '');
+        setSizeId(
+          data.sizes?.find((s) => Math.floor(Number(s.stock) || 0) > 0)?.id ||
+            data.sizes?.[0]?.id ||
+            ''
+        );
         const firstWeight =
           data.weights?.[0]?.id ||
           (data.weight ? 'default' : '');
@@ -40,6 +45,14 @@ export default function ProductDetail() {
       cancelled = true;
     };
   }, [id]);
+
+  useEffect(() => {
+    if (!product) return;
+    const chosen = (product.sizes || []).find((s) => s.id === sizeId) || product.sizes?.[0];
+    const available = Math.max(0, Math.floor(Number(chosen?.stock) || 0));
+    const maxQty = Math.min(10, Math.max(1, available || 1));
+    setQty((current) => Math.min(maxQty, Math.max(1, current)));
+  }, [product, sizeId]);
 
   if (error) {
     return (
@@ -71,6 +84,9 @@ export default function ProductDetail() {
     ? product.sizes
     : [{ id: 'default', label: 'Standard', price: product.price }];
   const size = sizes.find((s) => s.id === sizeId) || sizes[0];
+  const available = Math.max(0, Math.floor(Number(size?.stock) || 0));
+  const soldOut = product.inStock === false || available < 1;
+  const maxQty = Math.min(10, Math.max(1, available || 1));
   const weights = (product.weights || [])
     .map((w) => {
       const from = w.from || '';
@@ -110,9 +126,15 @@ export default function ProductDetail() {
     qty,
   };
 
+  const addToBag = () => {
+    if (soldOut) return;
+    addCartItem(buyPayload);
+    setAddedNote('Added to bag — you can pick another bat, or checkout.');
+  };
+
   const buyNow = () => {
-    if (product.inStock === false) return;
-    setBuyNowItem(buyPayload);
+    if (soldOut) return;
+    addCartItem(buyPayload);
     navigate('/checkout');
   };
 
@@ -191,8 +213,13 @@ export default function ProductDetail() {
             <label htmlFor="pdp-size">Size / handle</label>
             <select id="pdp-size" value={sizeId} onChange={(e) => setSizeId(e.target.value)}>
               {sizes.map((s) => (
-                <option key={s.id} value={s.id}>
+                <option key={s.id} value={s.id} disabled={Math.floor(Number(s.stock) || 0) < 1}>
                   {s.label} — {formatINR(s.price)}
+                  {Math.floor(Number(s.stock) || 0) < 1
+                    ? ' (Sold out)'
+                    : Math.floor(Number(s.stock) || 0) <= 5
+                      ? ` (${Math.floor(Number(s.stock) || 0)} left)`
+                      : ''}
                 </option>
               ))}
             </select>
@@ -221,10 +248,15 @@ export default function ProductDetail() {
               id="pdp-qty"
               type="number"
               min="1"
-              max="10"
+              max={maxQty}
               value={qty}
-              onChange={(e) => setQty(Math.min(10, Math.max(1, Number(e.target.value) || 1)))}
+              onChange={(e) => setQty(Math.min(maxQty, Math.max(1, Number(e.target.value) || 1)))}
             />
+            {soldOut ? (
+              <p className="pdp__ship-note">This size is sold out.</p>
+            ) : available <= 5 ? (
+              <p className="pdp__ship-note">Only {available} left for this size.</p>
+            ) : null}
           </div>
 
           <div className="pdp__actions pdp__actions--desktop">
@@ -232,13 +264,17 @@ export default function ProductDetail() {
               type="button"
               className="btn btn--primary btn--full"
               onClick={buyNow}
-              disabled={product.inStock === false}
+              disabled={soldOut}
             >
-              {product.inStock === false ? 'Sold out' : `Buy now — ${formatINR(size.price * qty)}`}
+              {soldOut ? 'Sold out' : `Buy now — ${formatINR(size.price * qty)}`}
+            </button>
+            <button type="button" className="btn btn--ghost btn--full" onClick={addToBag} disabled={soldOut}>
+              Add to bag
             </button>
             <button type="button" className="btn btn--whatsapp btn--full" onClick={buyWhatsApp}>
               Buy using WhatsApp
             </button>
+            {addedNote ? <p className="pdp__ship-note">{addedNote}</p> : null}
           </div>
 
           <p className="pdp__ship-note">
@@ -273,12 +309,12 @@ export default function ProductDetail() {
             type="button"
             className="btn btn--primary pdp-sticky__buy"
             onClick={buyNow}
-            disabled={product.inStock === false}
+            disabled={soldOut}
           >
-            {product.inStock === false ? 'Sold out' : 'Buy Now'}
+            {soldOut ? 'Sold out' : 'Buy Now'}
           </button>
-          <button type="button" className="pdp-sticky__whatsapp" onClick={buyWhatsApp}>
-            WhatsApp
+          <button type="button" className="pdp-sticky__whatsapp" onClick={addToBag} disabled={soldOut}>
+            Add
           </button>
         </div>
       </div>

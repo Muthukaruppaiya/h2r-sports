@@ -14,6 +14,12 @@ function weightsMatch(sent = [], saved = []) {
   return a.every((key, i) => key === b[i]);
 }
 
+function stockTotal(product) {
+  const sizes = product?.sizes || [];
+  if (!sizes.length) return product?.inStock === false ? 0 : null;
+  return sizes.reduce((n, s) => n + Math.max(0, Math.floor(Number(s.stock) || 0)), 0);
+}
+
 const EMPTY_FORM = {
   id: '',
   name: '',
@@ -29,7 +35,7 @@ const EMPTY_FORM = {
   description: '',
   features: '',
   imageList: [],
-  sizeRows: [{ id: '', label: '', price: '' }],
+  sizeRows: [{ id: '', label: '', price: '', stock: '10' }],
   weightRanges: [{ from: '', to: '' }],
   inStock: true,
   topSelling: false,
@@ -141,8 +147,9 @@ export default function Inventory() {
               id: s.id || '',
               label: s.label || '',
               price: String(s.price ?? product.price ?? ''),
+              stock: String(s.stock ?? ''),
             }))
-          : [{ id: '', label: '', price: String(product.price || '') }],
+          : [{ id: '', label: '', price: String(product.price || ''), stock: '10' }],
         weightRanges: product.weights?.length
           ? product.weights.map((w) => ({
               from: w.from || '',
@@ -155,7 +162,7 @@ export default function Inventory() {
       });
     } else {
       setEditingProduct(null);
-      setFormData({ ...EMPTY_FORM, sizeRows: [{ id: '', label: '', price: '' }] });
+      setFormData({ ...EMPTY_FORM, sizeRows: [{ id: '', label: '', price: '', stock: '10' }] });
     }
     setIsModalOpen(true);
   };
@@ -224,6 +231,7 @@ export default function Inventory() {
             id,
             label,
             price: Number.isFinite(price) && price > 0 ? price : Number(formData.price) || 0,
+            stock: Math.max(0, Math.floor(Number(row.stock)) || 0),
           };
         })
         .filter(Boolean);
@@ -234,6 +242,7 @@ export default function Inventory() {
             id: 'default',
             label: 'Standard',
             price: Number(formData.price),
+            stock: 10,
           },
         ];
       }
@@ -440,6 +449,7 @@ export default function Inventory() {
                     <th>Product</th>
                     <th>Category</th>
                     <th>Price</th>
+                    <th>Qty</th>
                     <th>Status</th>
                     <th>Actions</th>
                   </tr>
@@ -463,6 +473,7 @@ export default function Inventory() {
                       </td>
                       <td>{product.category || '—'}</td>
                       <td style={{ fontWeight: 600 }}>₹{Number(product.price || 0).toLocaleString()}</td>
+                      <td style={{ fontWeight: 600 }}>{stockTotal(product) ?? '—'}</td>
                       <td>
                         <span className={`adm-pill ${product.inStock !== false ? 'adm-pill--ok' : 'adm-pill--bad'}`}>
                           {product.inStock !== false ? 'In stock' : 'Out of stock'}
@@ -668,16 +679,17 @@ export default function Inventory() {
               <section className="inv-section">
                 <header className="inv-section__head">
                   <h3>Sizes</h3>
-                  <p>Each size has its own ID, label, and price — customers pick these on checkout</p>
+                  <p>Each size has its own ID, label, price, and stock quantity — checkout deducts from this</p>
                 </header>
                 <div className="inv-row-list">
                   <div className="inv-row-list__labels">
                     <span>ID</span>
                     <span>Label</span>
                     <span>Price (₹)</span>
+                    <span>Stock</span>
                     <span />
                   </div>
-                  {(formData.sizeRows || [{ id: '', label: '', price: '' }]).map((row, index) => (
+                  {(formData.sizeRows || [{ id: '', label: '', price: '', stock: '10' }]).map((row, index) => (
                     <div key={`size-${index}`} className="inv-row">
                       <input
                         placeholder="35"
@@ -720,6 +732,19 @@ export default function Inventory() {
                           });
                         }}
                       />
+                      <input
+                        inputMode="numeric"
+                        placeholder="10"
+                        value={row.stock ?? ''}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/[^\d]/g, '');
+                          setFormData((prev) => {
+                            const next = [...(prev.sizeRows || [])];
+                            next[index] = { ...next[index], stock: value };
+                            return { ...prev, sizeRows: next };
+                          });
+                        }}
+                      />
                       <button
                         type="button"
                         className="adm-btn adm-btn--danger inv-row__remove"
@@ -728,7 +753,7 @@ export default function Inventory() {
                             const next = (prev.sizeRows || []).filter((_, i) => i !== index);
                             return {
                               ...prev,
-                              sizeRows: next.length ? next : [{ id: '', label: '', price: '' }],
+                              sizeRows: next.length ? next : [{ id: '', label: '', price: '', stock: '10' }],
                             };
                           });
                         }}
@@ -746,7 +771,7 @@ export default function Inventory() {
                       ...prev,
                       sizeRows: [
                         ...(prev.sizeRows || []),
-                        { id: '', label: '', price: String(prev.price || '') },
+                        { id: '', label: '', price: String(prev.price || ''), stock: '10' },
                       ],
                     }))
                   }
@@ -916,7 +941,7 @@ export default function Inventory() {
               <section className="inv-section inv-section--flags">
                 <header className="inv-section__head">
                   <h3>Visibility</h3>
-                  <p>Stock and homepage highlights</p>
+                  <p>Quantities live on each size. Uncheck In stock to hide Buy now without wiping numbers.</p>
                 </header>
                 <div className="inv-flags">
                   <label>

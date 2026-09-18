@@ -1,29 +1,106 @@
-const KEY = 'h2r_buy_now';
+const KEY = 'h2r_cart';
+const LEGACY = 'h2r_buy_now';
 
-/** Single-item checkout payload (replaces cart). */
-export function setBuyNowItem(item) {
-  sessionStorage.setItem(KEY, JSON.stringify(item));
+function lineKey(item) {
+  return `${item.id}:${item.sizeId}:${item.weightId || 'na'}`;
 }
 
-export function getBuyNowItem() {
+function normalize(item) {
+  if (!item?.id) return null;
+  const sizeId = item.sizeId || 'default';
+  const next = {
+    ...item,
+    id: String(item.id),
+    sizeId: String(sizeId),
+    sizeLabel: item.sizeLabel || '',
+    weightId: item.weightId || '',
+    weightLabel: item.weightLabel || '',
+    qty: Math.max(1, Number(item.qty) || 1),
+    price: Number(item.price) || 0,
+    compareAt: item.compareAt ? Number(item.compareAt) : null,
+    image: item.image || '',
+    name: item.name || '',
+  };
+  next.key = lineKey(next);
+  return next;
+}
+
+function emitCart() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('h2r-cart'));
+  }
+}
+
+function readLegacy() {
   try {
-    const raw = sessionStorage.getItem(KEY);
+    const raw = sessionStorage.getItem(LEGACY);
     if (!raw) return null;
-    const item = JSON.parse(raw);
-    if (!item?.id || !item?.sizeId) return null;
-    return {
-      ...item,
-      qty: Math.max(1, Number(item.qty) || 1),
-      price: Number(item.price) || 0,
-      weightId: item.weightId || '',
-      weightLabel: item.weightLabel || '',
-      key: `${item.id}:${item.sizeId}:${item.weightId || 'na'}`,
-    };
+    return normalize(JSON.parse(raw));
   } catch {
     return null;
   }
 }
 
+export function getCart() {
+  try {
+    const raw = sessionStorage.getItem(KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map(normalize).filter(Boolean);
+      }
+    }
+    const legacy = readLegacy();
+    return legacy ? [legacy] : [];
+  } catch {
+    return [];
+  }
+}
+
+export function setCart(items) {
+  const next = (items || []).map(normalize).filter(Boolean);
+  sessionStorage.setItem(KEY, JSON.stringify(next));
+  sessionStorage.removeItem(LEGACY);
+  emitCart();
+  return next;
+}
+
+/** Adds a bat to the bag. Same size/weight increases qty. */
+export function addCartItem(item) {
+  const incoming = normalize(item);
+  if (!incoming) return getCart();
+  const cart = getCart();
+  const idx = cart.findIndex((row) => row.key === incoming.key);
+  if (idx >= 0) {
+    cart[idx] = { ...cart[idx], qty: cart[idx].qty + incoming.qty };
+  } else {
+    cart.push(incoming);
+  }
+  return setCart(cart);
+}
+
+export function updateCartQty(key, qty) {
+  const nextQty = Math.max(1, Number(qty) || 1);
+  return setCart(getCart().map((row) => (row.key === key ? { ...row, qty: nextQty } : row)));
+}
+
+export function removeCartItem(key) {
+  return setCart(getCart().filter((row) => row.key !== key));
+}
+
+export function cartCount(items = getCart()) {
+  return items.reduce((n, row) => n + (Number(row.qty) || 0), 0);
+}
+
+/** Keep old name: add to bag (does not wipe other bats). */
+export function setBuyNowItem(item) {
+  return addCartItem(item);
+}
+
+export function getBuyNowItem() {
+  return getCart()[0] || null;
+}
+
 export function clearBuyNowItem() {
-  sessionStorage.removeItem(KEY);
+  setCart([]);
 }

@@ -24,7 +24,9 @@ import { parseInstagramUrl } from './utils/instagram.js';
 import { buildLineItemsFromRequest, validateCheckoutPayload } from './utils/orderCheckout.js';
 import { uniquifySizes, sizesNeedRewrite } from './utils/productSizes.js';
 import { fulfillPaidCheckout, publicOrder } from './utils/orderFulfill.js';
+import { decrementStock, restoreStock, billStockItems, parseStock } from './utils/stock.js';
 import { sendOrderEmail } from './utils/orderMail.js';
+import { isMailConfigured, sendMail, STORE_EMAIL, wrapSimpleEmail } from './utils/mailer.js';
 import {
   getRazorpayClient,
   getRazorpayKeyId,
@@ -176,8 +178,18 @@ function withImages(product) {
     Array.isArray(src.images) && src.images.length
       ? src.images
       : getProductImages(src.id);
-  const sizes = uniquifySizes(src.sizes || []);
-  return { ...src, sizes, images, image: images[0] };
+  const sizes = uniquifySizes(src.sizes || []).map((s) => ({
+    ...s,
+    stock: parseStock(s.stock, 0),
+  }));
+  const hasQty = sizes.some((s) => s.stock > 0);
+  return {
+    ...src,
+    sizes,
+    images,
+    image: images[0],
+    inStock: sizes.length ? hasQty && src.inStock !== false : src.inStock !== false,
+  };
 }
 
 function sanitizeProductInput(body, { isCreate = false } = {}) {
@@ -205,9 +217,15 @@ function sanitizeProductInput(body, { isCreate = false } = {}) {
           id: String(s.id || '').trim(),
           label: String(s.label || '').trim(),
           price: Number(s.price) || out.price || 0,
+          stock: parseStock(s.stock, 0),
         }))
         .filter((s) => s.label || s.id)
     );
+    if (out.inStock !== false) {
+      out.inStock = out.sizes.some((s) => parseStock(s.stock, 0) > 0);
+    } else {
+      out.inStock = false;
+    }
   }
   if (Array.isArray(out.weights)) {
     out.weights = out.weights
@@ -940,6 +958,7 @@ app.get('/api/health', (_req, res) => {
     region: 'IN',
     currency: 'INR',
     db: dbState[mongoose.connection.readyState] ?? 'unknown',
+    mail: isMailConfigured() ? 'configured' : 'missing-smtp',
   });
 });
 
@@ -1423,6 +1442,34 @@ app.put('/api/admin/settings/payment', protect, admin, async (req, res) => {
   }
 });
 
+app.post('/api/admin/settings/test-email', protect, admin, async (req, res) => {
+  try {
+    if (!isMailConfigured()) {
+      return res.status(503).json({
+        error:
+          'Mail is not configured. On Render set SMTP_HOST=smtp.gmail.com, SMTP_PORT=587, SMTP_USER (your Gmail), SMTP_PASS (Gmail App Password), STORE_EMAIL=h2rsports7@gmail.com, then restart.',
+      });
+    }
+    const to = String(req.body?.to || req.user?.email || STORE_EMAIL).trim().toLowerCase();
+    const result = await sendMail({
+      to,
+      subject: 'H2R Sports — test email',
+      text: 'If you received this, SMTP is working. Order confirmed and shipped mails will use the same mailbox.',
+      html: wrapSimpleEmail({
+        title: 'Test email',
+        bodyHtml:
+          '<p style="margin:0;line-height:1.5;">If you received this, SMTP is working. Order confirmed and shipped mails will use the same mailbox.</p>',
+      }),
+    });
+    if (!result.sent) {
+      return res.status(500).json({ error: result.reason || 'Send failed' });
+    }
+    res.json({ ok: true, to: result.to });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Store return / pickup address (printed on shipping labels) ────────────────
 app.get('/api/admin/settings/store-address', protect, admin, async (_req, res) => {
   try {
@@ -1704,6 +1751,12 @@ app.put('/api/admin/orders/:id/status', protect, admin, async (req, res) => {
     if (updates.paymentStatus) currentOrder.paymentStatus = updates.paymentStatus;
     if (updates.courier) currentOrder.courier = updates.courier;
     currentOrder.statusHistory.push(historyEntry);
+
+    if (updates.status === 'cancelled' && currentOrder.stockDecremented && !currentOrder.stockRestored) {
+      await restoreStock(currentOrder.items);
+      currentOrder.stockRestored = true;
+    }
+
     await currentOrder.save();
 
     const mailEvent = {
@@ -1763,6 +1816,7 @@ app.get('/api/marketing/public', async (_req, res) => {
       }))
       .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
 
+    res.setHeader('Cache-Control', 'no-store');
     res.json({ floatingVideos, showcaseVideos, whatsappStatuses });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2189,16 +2243,20 @@ app.get('/api/media/:id', async (req, res) => {
 
     const file = files[0];
     const fileSize = Number(file.length) || 0;
-    res.setHeader('Content-Type', file.contentType || 'application/octet-stream');
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    const name = String(file.filename || '').toLowerCase();
+    let contentType = file.contentType || 'application/octet-stream';
+    if (!contentType.startsWith('video/') && !contentType.startsWith('image/')) {
+      if (name.endsWith('.webm')) contentType = 'video/webm';
+      else if (name.endsWith('.mov')) contentType = 'video/quicktime';
+      else if (name.endsWith('.mp4') || name.endsWith('.m4v')) contentType = 'video/mp4';
+      else contentType = 'video/mp4';
+    }
+    res.setHeader('Content-Type', contentType);
     res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Vary', 'Range');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Cache-Control', 'private, no-store');
 
-    // Honour HTTP Range requests (206 Partial Content). Browsers — especially iOS/Safari,
-    // and any browser re-fetching a video after its earlier full-body cache entry has
-    // expired/evicted — request video byte-ranges for seeking/playback. Previously this
-    // route advertised "Accept-Ranges: bytes" but always answered with the full file and a
-    // 200, which many <video> elements reject outright once a real Range request comes in
-    // (this is why a video could "work at first" but silently stop playing later).
     const rangeHeader = req.headers.range;
     const rangeMatch = rangeHeader && /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
 
@@ -2218,7 +2276,6 @@ app.get('/api/media/:id', async (req, res) => {
       res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
       res.setHeader('Content-Length', String(end - start + 1));
 
-      // GridFS's `end` option is exclusive, so pass end+1 to include the last requested byte.
       const download = bucket.openDownloadStream(objectId, { start, end: end + 1 });
       download.on('error', (err) => {
         console.error('GridFS serve error:', err);
@@ -2289,27 +2346,13 @@ app.get('/api/admin/customers', protect, admin, async (req, res) => {
 // ─── Store billing (physical shop / walk-in sales) ────────────────────────────
 const STORE_BILL_METHODS = ['cash', 'upi', 'card'];
 
-function sanitizeStoreBillInput(body = {}) {
+function sanitizeStoreBillLine(body = {}) {
   const itemName = String(body.itemName || body.title || '').trim();
-  if (!itemName) throw new Error('Item / product name is required');
-
-  const unitPrice = Math.max(0, Number(body.unitPrice) || Number(body.amount) || 0);
+  if (!itemName) return null;
+  const unitPrice = Math.max(0, Number(body.unitPrice) || Number(body.price) || 0);
   const qty = Math.max(1, Number(body.qty) || 1);
-  const discount = Math.max(0, Number(body.discount) || 0);
-  const gross = unitPrice * qty;
-  const amount = Math.max(0, Number.isFinite(Number(body.amount)) ? Number(body.amount) : gross - discount);
-  if (!Number.isFinite(amount) || amount < 0) throw new Error('Valid amount is required');
-
-  const paymentMethod = STORE_BILL_METHODS.includes(body.paymentMethod)
-    ? body.paymentMethod
-    : 'cash';
-
-  const soldAt = body.soldAt ? new Date(body.soldAt) : new Date();
-
   return {
-    customerName: String(body.customerName || '').trim(),
-    customerPhone: String(body.customerPhone || '').trim(),
-    productId: String(body.productId || '').trim(),
+    productId: String(body.productId || body.id || '').trim(),
     itemName,
     sizeId: String(body.sizeId || '').trim(),
     sizeLabel: String(body.sizeLabel || '').trim(),
@@ -2317,8 +2360,44 @@ function sanitizeStoreBillInput(body = {}) {
     weightLabel: String(body.weightLabel || '').trim(),
     qty,
     unitPrice,
-    discount: Math.min(discount, gross),
+    lineTotal: unitPrice * qty,
+  };
+}
+
+function sanitizeStoreBillInput(body = {}) {
+  const rawLines = Array.isArray(body.items) && body.items.length ? body.items : [body];
+  const items = rawLines.map(sanitizeStoreBillLine).filter(Boolean);
+  if (!items.length) throw new Error('Add at least one product');
+
+  const gross = items.reduce((sum, line) => sum + line.lineTotal, 0);
+  const discount = Math.min(Math.max(0, Number(body.discount) || 0), gross);
+  const amount = Math.max(
+    0,
+    Number.isFinite(Number(body.amount)) ? Number(body.amount) : gross - discount
+  );
+  if (!Number.isFinite(amount) || amount < 0) throw new Error('Valid amount is required');
+
+  const paymentMethod = STORE_BILL_METHODS.includes(body.paymentMethod)
+    ? body.paymentMethod
+    : 'cash';
+  const soldAt = body.soldAt ? new Date(body.soldAt) : new Date();
+  const first = items[0];
+
+  return {
+    customerName: String(body.customerName || '').trim(),
+    customerPhone: String(body.customerPhone || '').trim(),
+    productId: first.productId,
+    itemName:
+      items.length === 1 ? first.itemName : `${first.itemName} + ${items.length - 1} more`,
+    sizeId: first.sizeId,
+    sizeLabel: first.sizeLabel,
+    weightId: first.weightId,
+    weightLabel: first.weightLabel,
+    qty: items.reduce((sum, line) => sum + line.qty, 0),
+    unitPrice: first.unitPrice,
+    discount,
     amount,
+    items,
     paymentMethod,
     soldAt: Number.isNaN(soldAt.getTime()) ? new Date() : soldAt,
     notes: String(body.notes || '').trim(),
@@ -2357,36 +2436,62 @@ app.get('/api/admin/store-bills/:id', protect, admin, async (req, res) => {
 app.post('/api/admin/store-bills', protect, admin, async (req, res) => {
   try {
     const data = sanitizeStoreBillInput(req.body);
-    const billId = await makeStoreBillId();
-    const bill = await StoreBill.create({ ...data, billId });
-    res.status(201).json({ ok: true, bill });
+    const stockItems = billStockItems(data);
+    if (stockItems.length) await decrementStock(stockItems);
+    try {
+      const billId = await makeStoreBillId();
+      const bill = await StoreBill.create({
+        ...data,
+        billId,
+        stockDecremented: stockItems.length > 0,
+      });
+      res.status(201).json({ ok: true, bill });
+    } catch (err) {
+      if (stockItems.length) await restoreStock(stockItems);
+      throw err;
+    }
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    res.status(err.status || 400).json({ error: err.message });
   }
 });
 
 app.put('/api/admin/store-bills/:id', protect, admin, async (req, res) => {
   try {
     const data = sanitizeStoreBillInput(req.body);
+    const existing = await StoreBill.findOne({ billId: req.params.id });
+    if (!existing) return res.status(404).json({ error: 'Store bill not found' });
+
+    if (existing.stockDecremented) {
+      await restoreStock(billStockItems(existing));
+    }
+    const nextItems = billStockItems(data);
+    try {
+      if (nextItems.length) await decrementStock(nextItems);
+    } catch (err) {
+      if (existing.stockDecremented) await decrementStock(billStockItems(existing));
+      throw err;
+    }
+
     const bill = await StoreBill.findOneAndUpdate(
       { billId: req.params.id },
-      { $set: data },
+      { $set: { ...data, stockDecremented: nextItems.length > 0 } },
       { new: true, runValidators: true }
     );
-    if (!bill) return res.status(404).json({ error: 'Store bill not found' });
     res.json({ ok: true, bill });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    res.status(err.status || 400).json({ error: err.message });
   }
 });
 
 app.delete('/api/admin/store-bills/:id', protect, admin, async (req, res) => {
   try {
-    const bill = await StoreBill.findOneAndDelete({ billId: req.params.id });
+    const bill = await StoreBill.findOne({ billId: req.params.id });
     if (!bill) return res.status(404).json({ error: 'Store bill not found' });
+    if (bill.stockDecremented) await restoreStock(billStockItems(bill));
+    await StoreBill.deleteOne({ billId: req.params.id });
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 
@@ -2413,9 +2518,9 @@ app.put('/api/admin/customers/:email', protect, admin, async (req, res) => {
 // ─── Static assets ────────────────────────────────────────────────────────────
 app.use('/products', express.static(PRODUCTS_IMG_DIR, { maxAge: '1d' }));
 app.use('/frames', express.static(FRAMES_DIR, { maxAge: '1d', fallthrough: false }));
-app.use('/marketing', express.static(MARKETING_DIR, { maxAge: '1d' }));
+app.use('/marketing', express.static(MARKETING_DIR, { maxAge: '1y', immutable: true }));
 if (fs.existsSync(LEGACY_MARKETING_DIR)) {
-  app.use('/marketing', express.static(LEGACY_MARKETING_DIR, { maxAge: '1d' }));
+  app.use('/marketing', express.static(LEGACY_MARKETING_DIR, { maxAge: '1y', immutable: true }));
 }
 
 if (fs.existsSync(CLIENT_DIST)) {
@@ -2450,6 +2555,11 @@ async function start() {
     await ensureCounterSeed('order', await Order.countDocuments());
     await ensureCounterSeed('storeBill', await StoreBill.countDocuments());
     await ensureLivePaymentMode();
+    if (isMailConfigured()) {
+      console.log('✓ Order email: SMTP configured');
+    } else {
+      console.warn('⚠ Order email: SMTP_USER / SMTP_PASS are not set — mails will not send. Add them on Render and restart.');
+    }
 
     if (process.env.NODE_ENV === 'production' && JWT_SECRET === 'h2r_sports_super_secret') {
       console.error('✗ JWT_SECRET is still the default. Set a long random JWT_SECRET on Render before taking live traffic.');
@@ -2458,15 +2568,33 @@ async function start() {
     const products = await Product.find();
     let sizeFixes = 0;
     for (const product of products) {
-      const next = uniquifySizes(product.sizes || []);
-      if (sizesNeedRewrite(product.sizes || [], next)) {
+      const original = product.sizes || [];
+      let next = uniquifySizes(original);
+      let changed = sizesNeedRewrite(original, next);
+      next = next.map((s, i) => {
+        const orig = original[i];
+        const hasStock = orig?.stock !== undefined && orig?.stock !== null;
+        const stock = hasStock
+          ? parseStock(orig.stock, 0)
+          : product.inStock === false
+            ? 0
+            : 10;
+        if (!hasStock) changed = true;
+        return { ...s, stock };
+      });
+      const available = next.length ? next.some((s) => parseStock(s.stock, 0) > 0) : product.inStock !== false;
+      if (product.inStock !== available) {
+        product.inStock = available;
+        changed = true;
+      }
+      if (changed) {
         product.sizes = next;
         await product.save();
         sizeFixes += 1;
       }
     }
     if (sizeFixes) {
-      console.log(`✓ Unique size ids written on ${sizeFixes} product(s)`);
+      console.log(`✓ Size ids / stock quantities updated on ${sizeFixes} product(s)`);
     }
 
     const isProd = process.env.NODE_ENV === 'production';
