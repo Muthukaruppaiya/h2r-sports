@@ -20,6 +20,9 @@ const LIVE_REPORTS = [
   { id: 'payment-methods', name: 'Payment Method Mix', category: 'payments', createdBy: 'BI Engine', startDim: 'payment' },
   { id: 'customer-spend', name: 'Top Customers by Spend', category: 'customers', createdBy: 'BI Engine', startDim: 'customer' },
   { id: 'activity-status', name: 'Order Status Activity', category: 'activity', createdBy: 'BI Engine', startDim: 'status' },
+  { id: 'stock-valuation', name: 'Stock Valuation (Qty × Purchase)', category: 'inventory', kind: 'stock' },
+  { id: 'margin-profit', name: 'Margin & Profit (Sale − Purchase)', category: 'inventory', kind: 'margin' },
+  { id: 'grn-inward', name: 'GRN / Purchase Inward', category: 'inventory', kind: 'grn' },
 ];
 
 const CATEGORIES = [
@@ -28,6 +31,7 @@ const CATEGORIES = [
   { id: 'payments', label: 'Payments' },
   { id: 'activity', label: 'Activity' },
   { id: 'customers', label: 'Customers' },
+  { id: 'inventory', label: 'Stock & Margin' },
 ];
 
 function money(n) {
@@ -51,6 +55,49 @@ function formatDay(ymd) {
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+function csvCell(value) {
+  const text = String(value ?? '');
+  if (/[",\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+  return text;
+}
+
+function downloadCsv(filename, headers, rows) {
+  const csv = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
+  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadPdf(title, headers, rows) {
+  const win = window.open('', '_blank', 'width=1100,height=800');
+  if (!win) {
+    alert('Allow pop-ups to export PDF');
+    return;
+  }
+  const head = headers.map((h) => `<th>${h}</th>`).join('');
+  const body = rows
+    .map((row) => `<tr>${row.map((c) => `<td>${c ?? ''}</td>`).join('')}</tr>`)
+    .join('');
+  win.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
+    <style>
+      body{font-family:Arial,sans-serif;padding:16px;color:#111}
+      table{width:100%;border-collapse:collapse;font-size:11px}
+      th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}
+      th{background:#0a2540;color:#fff}
+    </style></head><body>
+    <h1>${title}</h1>
+    <p>${rows.length} rows · ${new Date().toLocaleString('en-IN')}</p>
+    <table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
+    </body></html>`);
+  win.document.close();
+  win.focus();
+  win.print();
+}
+
 function filterOrders(orders, filters) {
   return (orders || []).filter((o) => {
     if (filters.date && o.date !== filters.date) return false;
@@ -67,6 +114,10 @@ export default function Reports() {
   const [search, setSearch] = useState('');
   const [activeReport, setActiveReport] = useState(null);
   const [days, setDays] = useState(30);
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [query, setQuery] = useState('');
+  const [stockOnly, setStockOnly] = useState(false);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -97,7 +148,21 @@ export default function Reports() {
       setLoading(true);
       setError('');
       try {
-        const res = await api.get(`/admin/reports/overview?days=${days}`);
+        let res;
+        if (activeReport.kind === 'stock') {
+          res = await api.get('/admin/reports/stock');
+        } else if (activeReport.kind === 'margin' || activeReport.kind === 'grn') {
+          const params = new URLSearchParams();
+          if (fromDate) params.set('from', fromDate);
+          if (toDate) params.set('to', toDate);
+          const path = activeReport.kind === 'grn' ? '/admin/reports/grn' : '/admin/reports/margin';
+          res = await api.get(`${path}?${params.toString()}`);
+        } else {
+          const params = new URLSearchParams({ days: String(days) });
+          if (fromDate) params.set('from', fromDate);
+          if (toDate) params.set('to', toDate);
+          res = await api.get(`/admin/reports/overview?${params.toString()}`);
+        }
         if (!cancelled) setData(res.data);
       } catch (err) {
         if (!cancelled) setError(err.response?.data?.error || err.message || 'Failed to load report');
@@ -109,7 +174,7 @@ export default function Reports() {
     return () => {
       cancelled = true;
     };
-  }, [activeReport, days]);
+  }, [activeReport, days, fromDate, toDate]);
 
   const openReport = (report) => {
     const now = formatVisited(new Date());
@@ -137,6 +202,56 @@ export default function Reports() {
   const pushDrill = (step) => setDrill((prev) => [...prev, step]);
   const jumpTo = (index) => setDrill((prev) => prev.slice(0, index + 1));
 
+  const filterBar = (
+    <div className="adm-filters" style={{ margin: '0.75rem 0 1rem' }}>
+      {activeReport?.kind !== 'stock' ? (
+        <>
+          <div className="adm-field">
+            <label>From</label>
+            <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          </div>
+          <div className="adm-field">
+            <label>To</label>
+            <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+          </div>
+        </>
+      ) : null}
+      {activeReport?.kind !== 'stock' && activeReport?.kind !== 'margin' && activeReport?.kind !== 'grn' ? (
+        <div className="adm-field">
+          <label>Preset</label>
+          <select
+            value={days}
+            onChange={(e) => {
+              setDays(Number(e.target.value));
+              setFromDate('');
+              setToDate('');
+              setDrill([{ type: 'root', dim: activeReport.startDim || 'overview', label: activeReport.name }]);
+            }}
+          >
+            <option value={7}>Last 7 days</option>
+            <option value={30}>Last 30 days</option>
+            <option value={90}>Last 90 days</option>
+            <option value={180}>Last 180 days</option>
+            <option value={365}>Last 365 days</option>
+          </select>
+        </div>
+      ) : null}
+      <div className="adm-field">
+        <label>Search</label>
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Product, customer…" />
+      </div>
+      {activeReport?.kind === 'stock' ? (
+        <div className="adm-field">
+          <label>Stock</label>
+          <select value={stockOnly ? 'in' : 'all'} onChange={(e) => setStockOnly(e.target.value === 'in')}>
+            <option value="all">All SKUs</option>
+            <option value="in">In stock only</option>
+          </select>
+        </div>
+      ) : null}
+    </div>
+  );
+
   if (activeReport) {
     return (
       <div className="adm-page bi-report">
@@ -146,46 +261,53 @@ export default function Reports() {
               ← Reports Center
             </button>
             <h1 style={{ marginTop: '0.75rem' }}>{activeReport.name}</h1>
-            <p>Interactive BI report — click any KPI, bar, or row to drill down.</p>
-          </div>
-          <div className="adm-page__actions">
-            <select
-              value={days}
-              onChange={(e) => {
-                setDays(Number(e.target.value));
-                setDrill([{ type: 'root', dim: activeReport.startDim || 'overview', label: activeReport.name }]);
-              }}
-              className="reports-center__range"
-            >
-              <option value={7}>Last 7 days</option>
-              <option value={30}>Last 30 days</option>
-              <option value={90}>Last 90 days</option>
-              <option value={180}>Last 180 days</option>
-            </select>
+            <p>
+              {activeReport.kind === 'stock'
+                ? 'Current stock × last purchase price from GRN.'
+                : activeReport.kind === 'margin'
+                  ? 'Sold qty × (sale price − purchase price). Example: buy ₹2,500, sell ₹3,000 → ₹500 profit per bat.'
+                  : activeReport.kind === 'grn'
+                    ? 'Goods receipts in the date range: qty in, purchase value, supplier, invoice.'
+                    : 'Filters + download apply to the current view.'}
+            </p>
           </div>
         </div>
 
-        <nav className="bi-crumb" aria-label="Drill path">
-          {drill.map((step, index) => (
-            <button
-              key={`${step.type}-${step.value || step.dim}-${index}`}
-              type="button"
-              className={`bi-crumb__item${index === drill.length - 1 ? ' is-current' : ''}`}
-              onClick={() => jumpTo(index)}
-            >
-              {step.label}
-            </button>
-          ))}
-        </nav>
+        {filterBar}
 
-        {loading && <div className="adm-empty">Loading BI data…</div>}
+        {!activeReport.kind && (
+          <nav className="bi-crumb" aria-label="Drill path">
+            {drill.map((step, index) => (
+              <button
+                key={`${step.type}-${step.value || step.dim}-${index}`}
+                type="button"
+                className={`bi-crumb__item${index === drill.length - 1 ? ' is-current' : ''}`}
+                onClick={() => jumpTo(index)}
+              >
+                {step.label}
+              </button>
+            ))}
+          </nav>
+        )}
+
+        {loading && <div className="adm-empty">Loading report…</div>}
         {error && <div className="reports-center__error">{error}</div>}
-        {!loading && !error && data && (
+        {!loading && !error && data && activeReport.kind === 'stock' && (
+          <StockValuationReport data={data} query={query} stockOnly={stockOnly} />
+        )}
+        {!loading && !error && data && activeReport.kind === 'margin' && (
+          <MarginReport data={data} query={query} />
+        )}
+        {!loading && !error && data && activeReport.kind === 'grn' && (
+          <GrnInwardReport data={data} query={query} />
+        )}
+        {!loading && !error && data && !activeReport.kind && (
           <BiExplorer
             data={data}
             days={days}
             level={currentLevel}
             filters={drillFilters}
+            query={query}
             onDrill={pushDrill}
           />
         )}
@@ -273,8 +395,17 @@ export default function Reports() {
   );
 }
 
-function BiExplorer({ data, days, level, filters, onDrill }) {
-  const orders = useMemo(() => filterOrders(data.drillOrders || [], filters), [data.drillOrders, filters]);
+function BiExplorer({ data, days, level, filters, query, onDrill }) {
+  const q = String(query || '').trim().toLowerCase();
+  const orders = useMemo(() => {
+    return filterOrders(data.drillOrders || [], filters).filter((o) => {
+      if (!q) return true;
+      return [o.orderId, o.customerName, o.customerEmail, o.customerPhone, ...(o.items || []).map((i) => i.name)]
+        .join(' ')
+        .toLowerCase()
+        .includes(q);
+    });
+  }, [data.drillOrders, filters, q]);
   const maxRevenue = Math.max(...(data.dailyTrend || []).map((d) => d.revenue), 1);
 
   const scopedKpis = useMemo(() => {
@@ -355,7 +486,7 @@ function BiExplorer({ data, days, level, filters, onDrill }) {
         </button>
       </div>
 
-      <p className="bi-hint">{days}-day BI view · Click any chart row or bar to drill into orders</p>
+      <p className="bi-hint">{days}-day BI view · Search + dates in the filter bar · Click to drill</p>
 
       {(dim === 'overview' || dim === 'day') && (
         <div className="adm-panel" style={{ marginBottom: '1rem' }}>
@@ -483,11 +614,31 @@ function DrillList({ title, rows }) {
 }
 
 function OrdersDrillTable({ orders, title, onOpenOrder }) {
+  const exportRows = () =>
+    orders.map((o, i) => [
+      i + 1,
+      o.orderId,
+      formatDay(o.date),
+      o.customerName,
+      o.customerEmail,
+      o.customerPhone,
+      getStatusLabel(o.status),
+      PAYMENT_LABELS[o.paymentMethod] || o.paymentMethod,
+      o.total,
+    ]);
+  const headers = ['S.No', 'Order', 'Date', 'Customer', 'Email', 'Phone', 'Status', 'Payment', 'Total'];
   return (
     <div className="adm-panel">
       <div className="adm-panel__head">
         <h2>{title}</h2>
-        <span className="bi-hint-inline">Drill level · orders</span>
+        <div style={{ display: 'flex', gap: '0.4rem' }}>
+          <button type="button" className="adm-btn adm-btn--ghost" onClick={() => downloadCsv('h2r-sales.csv', headers, exportRows())}>
+            Excel
+          </button>
+          <button type="button" className="adm-btn adm-btn--ghost" onClick={() => downloadPdf('H2R sales', headers, exportRows())}>
+            PDF
+          </button>
+        </div>
       </div>
       {orders.length === 0 ? (
         <div className="adm-empty">No orders in this slice.</div>
@@ -587,6 +738,360 @@ function OrderDrillDetail({ order }) {
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+function StockValuationReport({ data, query, stockOnly }) {
+  const q = String(query || '').trim().toLowerCase();
+  const rows = (data.rows || []).filter((r) => {
+    if (stockOnly && !(r.stock > 0)) return false;
+    if (!q) return true;
+    return [r.name, r.sizeLabel, r.collection, r.category].join(' ').toLowerCase().includes(q);
+  });
+  const kpis = rows.reduce(
+    (acc, r) => {
+      acc.totalStock += r.stock;
+      acc.totalValue += r.stockValue;
+      return acc;
+    },
+    { totalStock: 0, totalValue: 0 }
+  );
+  const headers = ['S.No', 'Product', 'Size', 'Stock', 'Purchase price', 'Stock value', 'Selling price'];
+  const exportRows = () =>
+    rows.map((r, i) => [i + 1, r.name, r.sizeLabel, r.stock, r.purchasePrice, r.stockValue, r.sellingPrice]);
+
+  return (
+    <div>
+      <div className="adm-kpi-grid">
+        <div className="adm-kpi">
+          <div className="adm-kpi__label">SKUs</div>
+          <div className="adm-kpi__value">{rows.length}</div>
+        </div>
+        <div className="adm-kpi">
+          <div className="adm-kpi__label">Total qty</div>
+          <div className="adm-kpi__value">{kpis.totalStock}</div>
+        </div>
+        <div className="adm-kpi">
+          <div className="adm-kpi__label">Stock value (qty × purchase)</div>
+          <div className="adm-kpi__value" style={{ color: '#1e40af' }}>{money(kpis.totalValue)}</div>
+        </div>
+      </div>
+      <div className="adm-panel">
+        <div className="adm-panel__head">
+          <h2>Stock valuation</h2>
+          <div style={{ display: 'flex', gap: '0.4rem' }}>
+            <button type="button" className="adm-btn adm-btn--ghost" onClick={() => downloadCsv('h2r-stock-valuation.csv', headers, exportRows())}>
+              Excel
+            </button>
+            <button type="button" className="adm-btn adm-btn--ghost" onClick={() => downloadPdf('Stock valuation', headers, exportRows())}>
+              PDF
+            </button>
+          </div>
+        </div>
+        <div className="adm-table-wrap">
+          <table className="adm-table">
+            <thead>
+              <tr>
+                <th>S.No</th>
+                <th>Product</th>
+                <th>Size</th>
+                <th>Stock</th>
+                <th>Purchase ₹</th>
+                <th>Value</th>
+                <th>Selling ₹</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={`${r.productId}-${r.sizeId}-${i}`}>
+                  <td>{i + 1}</td>
+                  <td>
+                    <strong>{r.name}</strong>
+                    <div className="bi-muted">{r.category}</div>
+                  </td>
+                  <td>{r.sizeLabel}</td>
+                  <td>{r.stock}</td>
+                  <td>{money(r.purchasePrice)}</td>
+                  <td style={{ fontWeight: 750 }}>{money(r.stockValue)}</td>
+                  <td>{money(r.sellingPrice)}</td>
+                </tr>
+              ))}
+              {!rows.length && (
+                <tr>
+                  <td colSpan={7} className="reports-center__empty-row">
+                    No stock rows. Inward a GRN with purchase price first.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MarginReport({ data, query }) {
+  const q = String(query || '').trim().toLowerCase();
+  const rows = (data.rows || []).filter((r) => {
+    if (!q) return true;
+    return [r.name, r.sizeLabel].join(' ').toLowerCase().includes(q);
+  });
+  const kpis = rows.reduce(
+    (acc, r) => {
+      acc.qty += r.qty;
+      acc.revenue += r.revenue;
+      acc.cogs += r.cogs;
+      acc.profit += r.profit;
+      return acc;
+    },
+    { qty: 0, revenue: 0, cogs: 0, profit: 0 }
+  );
+  kpis.marginPct = kpis.revenue ? Math.round((kpis.profit / kpis.revenue) * 1000) / 10 : 0;
+  const headers = [
+    'S.No',
+    'Product',
+    'Size',
+    'Qty sold',
+    'Purchase ₹',
+    'Avg sale ₹',
+    'Revenue',
+    'Cost',
+    'Profit',
+    'Margin %',
+  ];
+  const exportRows = () =>
+    rows.map((r, i) => [
+      i + 1,
+      r.name,
+      r.sizeLabel,
+      r.qty,
+      r.purchasePrice,
+      Math.round(r.sellingAvg),
+      r.revenue,
+      r.cogs,
+      r.profit,
+      r.marginPct,
+    ]);
+
+  return (
+    <div>
+      <div className="adm-kpi-grid">
+        <div className="adm-kpi">
+          <div className="adm-kpi__label">Bats sold</div>
+          <div className="adm-kpi__value">{kpis.qty}</div>
+        </div>
+        <div className="adm-kpi">
+          <div className="adm-kpi__label">Revenue</div>
+          <div className="adm-kpi__value" style={{ color: '#1e40af' }}>{money(kpis.revenue)}</div>
+        </div>
+        <div className="adm-kpi">
+          <div className="adm-kpi__label">Purchase cost</div>
+          <div className="adm-kpi__value">{money(kpis.cogs)}</div>
+        </div>
+        <div className="adm-kpi">
+          <div className="adm-kpi__label">Profit (sale − purchase)</div>
+          <div className="adm-kpi__value" style={{ color: '#166534' }}>{money(kpis.profit)}</div>
+          <div className="adm-kpi__hint">{kpis.marginPct}% margin</div>
+        </div>
+      </div>
+      <div className="adm-panel">
+        <div className="adm-panel__head">
+          <h2>Margin by item</h2>
+          <div style={{ display: 'flex', gap: '0.4rem' }}>
+            <button type="button" className="adm-btn adm-btn--ghost" onClick={() => downloadCsv('h2r-margin.csv', headers, exportRows())}>
+              Excel
+            </button>
+            <button type="button" className="adm-btn adm-btn--ghost" onClick={() => downloadPdf('Margin & profit', headers, exportRows())}>
+              PDF
+            </button>
+          </div>
+        </div>
+        <div className="adm-table-wrap">
+          <table className="adm-table">
+            <thead>
+              <tr>
+                <th>S.No</th>
+                <th>Product</th>
+                <th>Size</th>
+                <th>Qty sold</th>
+                <th>Buy ₹</th>
+                <th>Sell avg ₹</th>
+                <th>Revenue</th>
+                <th>Cost</th>
+                <th>Profit</th>
+                <th>Margin</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={`${r.productId}-${r.sizeLabel}-${i}`}>
+                  <td>{i + 1}</td>
+                  <td><strong>{r.name}</strong></td>
+                  <td>{r.sizeLabel}</td>
+                  <td>{r.qty}</td>
+                  <td>{money(r.purchasePrice)}</td>
+                  <td>{money(r.sellingAvg)}</td>
+                  <td>{money(r.revenue)}</td>
+                  <td>{money(r.cogs)}</td>
+                  <td style={{ fontWeight: 750, color: r.profit >= 0 ? '#166534' : '#9f1239' }}>{money(r.profit)}</td>
+                  <td>{r.marginPct}%</td>
+                </tr>
+              ))}
+              {!rows.length && (
+                <tr>
+                  <td colSpan={10} className="reports-center__empty-row">
+                    No sales in this date range.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GrnInwardReport({ data, query }) {
+  const q = String(query || '').trim().toLowerCase();
+  const rows = (data.rows || []).filter((r) => {
+    if (!q) return true;
+    return [r.grnId, r.invoiceNumber, r.supplierName, r.itemName, r.sizeLabel]
+      .join(' ')
+      .toLowerCase()
+      .includes(q);
+  });
+  const docs = (data.documents || []).filter((d) => {
+    if (!q) return true;
+    return rows.some((r) => r.grnId === d.grnId) ||
+      [d.grnId, d.invoiceNumber, d.supplierName].join(' ').toLowerCase().includes(q);
+  });
+  const kpis = rows.reduce(
+    (acc, r) => {
+      acc.qty += r.qty;
+      acc.value += r.lineTotal;
+      return acc;
+    },
+    { qty: 0, value: 0 }
+  );
+  const headers = [
+    'S.No',
+    'GRN',
+    'Date',
+    'Invoice',
+    'Supplier',
+    'Item',
+    'Size',
+    'Qty in',
+    'Purchase ₹',
+    'Value',
+  ];
+  const exportRows = () =>
+    rows.map((r, i) => [
+      i + 1,
+      r.grnId,
+      formatDay(r.date),
+      r.invoiceNumber,
+      r.supplierName,
+      r.itemName,
+      r.sizeLabel,
+      r.qty,
+      r.purchasePrice,
+      r.lineTotal,
+    ]);
+  const docHeaders = ['S.No', 'GRN', 'Date', 'Invoice', 'Supplier', 'Lines', 'Qty in', 'Value'];
+  const exportDocs = () =>
+    docs.map((d, i) => [
+      i + 1,
+      d.grnId,
+      formatDay(d.date),
+      d.invoiceNumber,
+      d.supplierName,
+      d.itemCount,
+      d.totalQty,
+      d.totalValue,
+    ]);
+
+  return (
+    <div>
+      <div className="adm-kpi-grid">
+        <div className="adm-kpi">
+          <div className="adm-kpi__label">GRNs</div>
+          <div className="adm-kpi__value">{docs.length}</div>
+        </div>
+        <div className="adm-kpi">
+          <div className="adm-kpi__label">Qty inwarded</div>
+          <div className="adm-kpi__value">{kpis.qty}</div>
+        </div>
+        <div className="adm-kpi">
+          <div className="adm-kpi__label">Purchase value</div>
+          <div className="adm-kpi__value" style={{ color: '#1e40af' }}>{money(kpis.value)}</div>
+        </div>
+      </div>
+      <div className="adm-panel">
+        <div className="adm-panel__head">
+          <h2>GRN lines</h2>
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+            <button type="button" className="adm-btn adm-btn--ghost" onClick={() => downloadCsv('h2r-grn-lines.csv', headers, exportRows())}>
+              Excel lines
+            </button>
+            <button type="button" className="adm-btn adm-btn--ghost" onClick={() => downloadPdf('GRN lines', headers, exportRows())}>
+              PDF lines
+            </button>
+            <button type="button" className="adm-btn adm-btn--ghost" onClick={() => downloadCsv('h2r-grn-summary.csv', docHeaders, exportDocs())}>
+              Excel GRNs
+            </button>
+            <button type="button" className="adm-btn adm-btn--ghost" onClick={() => downloadPdf('GRN summary', docHeaders, exportDocs())}>
+              PDF GRNs
+            </button>
+          </div>
+        </div>
+        <div className="adm-table-wrap">
+          <table className="adm-table">
+            <thead>
+              <tr>
+                <th>S.No</th>
+                <th>GRN</th>
+                <th>Date</th>
+                <th>Supplier</th>
+                <th>Item</th>
+                <th>Qty in</th>
+                <th>Buy ₹</th>
+                <th>Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={`${r.grnId}-${i}`}>
+                  <td>{i + 1}</td>
+                  <td>
+                    <strong>{r.grnId}</strong>
+                    <div className="bi-muted">{r.invoiceNumber || 'No invoice'}</div>
+                  </td>
+                  <td>{formatDay(r.date)}</td>
+                  <td>{r.supplierName || '—'}</td>
+                  <td>
+                    {r.itemName}
+                    <div className="bi-muted">{r.sizeLabel}</div>
+                  </td>
+                  <td>{r.qty}</td>
+                  <td>{money(r.purchasePrice)}</td>
+                  <td style={{ fontWeight: 750 }}>{money(r.lineTotal)}</td>
+                </tr>
+              ))}
+              {!rows.length && (
+                <tr>
+                  <td colSpan={8} className="reports-center__empty-row">
+                    No GRNs in this date range.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

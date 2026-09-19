@@ -1,54 +1,96 @@
+import { useEffect, useState } from 'react';
 import { BRAND } from '../../utils/india';
-import { PAYMENT_STATUS_LABELS } from '../../utils/orderStatus';
+import { amountInWords } from '../../utils/amountInWords';
+import { companyAddressText, fetchCompany, mergeCompany } from '../../utils/companyProfile';
 
-const METHOD_LABELS = { upi: 'UPI', card: 'Card', cod: 'COD' };
+const METHOD_LABELS = { upi: 'UPI', card: 'Card', cod: 'COD', netbanking: 'Netbanking', razorpay: 'Online' };
 
 function money(n) {
-  return `₹${Number(n || 0).toLocaleString('en-IN')}`;
+  return `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function shortId(orderId = '') {
-  return `#${String(orderId).slice(0, 8).toUpperCase()}`;
+function invoiceNo(orderId = '') {
+  return String(orderId || '').toUpperCase();
 }
 
 function formatDate(value) {
   if (!value) return '—';
-  return new Date(value).toLocaleString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const d = new Date(value);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}.${mm}.${yyyy}`;
 }
 
-function paymentMetaLine(order) {
-  const meta = order.paymentMeta || {};
-  if (order.paymentMethod === 'upi' && meta.upiId) return meta.upiId;
-  if (order.paymentMethod === 'card') {
-    const last4 = meta.cardLast4 ? `•••• ${meta.cardLast4}` : '';
-    return [meta.cardName, last4].filter(Boolean).join(' · ') || 'Card';
-  }
-  return METHOD_LABELS[order.paymentMethod] || order.paymentMethod || '—';
+function addressBlock(parts) {
+  return parts.filter(Boolean).join('\n');
 }
 
-/**
- * Printable tax invoice / payment receipt for a single order.
- * Reused by Admin → Billing ("View bill") and Admin → Orders ("Invoice").
- * Print CSS (`.invoice-doc` @media print rules) lives in index.css so it
- * applies no matter which page renders this drawer.
- */
 export default function InvoiceDrawer({ order, onClose }) {
+  const [company, setCompany] = useState(() => mergeCompany());
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchCompany().then((data) => {
+      if (!cancelled) setCompany(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   if (!order) return null;
+
+  const legal = company.legalName || company.name;
+  const sellerAddress = addressBlock([
+    legal,
+    companyAddressText(company),
+    company.phone ? `Phone: ${company.phone}` : '',
+    company.whatsapp ? `WhatsApp: ${company.whatsapp}` : '',
+    company.email ? `Email: ${company.email}` : '',
+    company.website || '',
+  ]);
+  const ship = order.shipping || {};
+  const buyer = order.customer || {};
+  const billAddress = addressBlock([
+    buyer.name,
+    ship.addressLine1,
+    ship.addressLine2,
+    [ship.city, ship.state].filter(Boolean).join(', '),
+    ship.pincode ? `PIN: ${ship.pincode}` : '',
+    buyer.phone ? `Phone: ${buyer.phone}` : '',
+    buyer.email ? `Email: ${buyer.email}` : '',
+  ]);
+  const items = order.items || [];
+  const shippingFee = Number(order.shippingFee) || 0;
+  const rows = items.map((item) => {
+    const qty = Math.max(1, Number(item.qty) || 1);
+    const unit = Number(item.price) || 0;
+    const line = Number(item.lineTotal ?? unit * qty);
+    return {
+      name: item.name,
+      spec: [item.sizeLabel, item.weightLabel].filter(Boolean).join(' · '),
+      qty,
+      unit,
+      line,
+    };
+  });
+  if (shippingFee > 0) {
+    rows.push({ name: 'Shipping charges', spec: '', qty: 1, unit: shippingFee, line: shippingFee });
+  }
+  const subtotal = Number(order.subtotal) || items.reduce((sum, item) => sum + Number(item.lineTotal ?? item.price * item.qty), 0);
+  const total = Number(order.total) || subtotal + shippingFee;
+  const terms = (company.invoiceTerms || []).filter(Boolean).slice(0, 3);
+  const invoiceDetails = order.razorpayPaymentId || order.razorpayOrderId || '—';
 
   return (
     <div className="adm-drawer-backdrop" onClick={onClose}>
       <aside className="adm-drawer invoice-doc" onClick={(e) => e.stopPropagation()}>
         <div className="adm-drawer__head no-print">
-          <strong>Invoice {shortId(order.orderId)}</strong>
+          <strong>Invoice {invoiceNo(order.orderId)}</strong>
           <div className="inv-doc__head-actions">
             <button type="button" className="adm-btn adm-btn--primary" onClick={() => window.print()}>
-              🖨️ Print / PDF
+              Print / PDF
             </button>
             <button type="button" className="adm-btn adm-btn--ghost" onClick={onClose}>
               Close
@@ -57,97 +99,144 @@ export default function InvoiceDrawer({ order, onClose }) {
         </div>
 
         <div className="adm-drawer__body">
-          <div className="inv-doc__top">
-            <div className="inv-doc__brand">
-              <img src={BRAND.logo} alt="" width={44} height={44} />
+          <div className="amz-inv">
+            <div className="amz-inv__banner">
+              <div className="amz-inv__brand">
+                <img src={BRAND.logo} alt="" />
+                <div>
+                  <h1>{legal}</h1>
+                  {company.tagline ? <p>{company.tagline}</p> : null}
+                  {company.website ? <p>{company.website}</p> : null}
+                </div>
+              </div>
+              <div className="amz-inv__kind">
+                <span>Invoice</span>
+                <strong>{invoiceNo(order.orderId)}</strong>
+                <em>(Original for recipient)</em>
+              </div>
+            </div>
+
+            <div className="amz-inv__grid">
               <div>
-                <div className="inv-doc__brand-name">{BRAND.name}</div>
-                <div className="inv-doc__brand-sub">Tax invoice / payment receipt</div>
-                <div className="inv-doc__brand-sub">
-                  {BRAND.phone} · {BRAND.email}
+                <strong>Sold by</strong>
+                <p>{sellerAddress}</p>
+                {company.pan ? <p>PAN: {company.pan}</p> : null}
+              </div>
+              <div>
+                <strong>Billing address</strong>
+                <p>{billAddress}</p>
+              </div>
+              <div className="amz-inv__ship">
+                <strong>Shipping address</strong>
+                <p>{billAddress}</p>
+              </div>
+            </div>
+
+            <div className="amz-inv__ids">
+              <div>
+                Order number: <b>{order.orderId}</b>
+                <br />
+                Order date: <b>{formatDate(order.createdAt)}</b>
+              </div>
+              <div>
+                Invoice date: <b>{formatDate(order.createdAt)}</b>
+                <br />
+                Payment: <b>{METHOD_LABELS[order.paymentMethod] || order.paymentMethod || 'Online'}</b>
+                <br />
+                Ref: <b>{invoiceDetails}</b>
+              </div>
+            </div>
+
+            <table className="amz-inv__table">
+              <colgroup>
+                <col className="amz-inv__col-no" />
+                <col />
+                <col className="amz-inv__col-num" />
+                <col className="amz-inv__col-qty" />
+                <col className="amz-inv__col-num" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Item description</th>
+                  <th>Unit price</th>
+                  <th>Qty</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, idx) => (
+                  <tr key={`${row.name}-${idx}`}>
+                    <td className="amz-inv__no">{idx + 1}</td>
+                    <td>
+                      <b>{row.name}</b>
+                      {row.spec ? <div className="amz-inv__spec">{row.spec}</div> : null}
+                    </td>
+                    <td className="amz-inv__num">{money(row.unit)}</td>
+                    <td className="amz-inv__qty">
+                      <span>{row.qty}</span>
+                    </td>
+                    <td className="amz-inv__amt">{money(row.line)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div className="amz-inv__summary">
+              <div className="amz-inv__words">
+                <span>Amount in words</span>
+                <b>{amountInWords(total)}</b>
+              </div>
+              <div className="amz-inv__totals">
+                <div>
+                  <span>Subtotal</span>
+                  <b>{money(subtotal)}</b>
+                </div>
+                <div>
+                  <span>Shipping</span>
+                  <b>{shippingFee ? money(shippingFee) : 'FREE'}</b>
+                </div>
+                <div className="is-grand">
+                  <span>Total payable</span>
+                  <b>{money(total)}</b>
                 </div>
               </div>
             </div>
-            <div className="inv-doc__meta">
-              <div>{formatDate(order.createdAt)}</div>
-              <div className="inv-doc__meta-id">{shortId(order.orderId)}</div>
-            </div>
-          </div>
 
-          <div className="inv-doc__parties">
-            <div>
-              <div className="inv-doc__label">Billed to</div>
-              <div className="inv-doc__name">{order.customer?.name}</div>
-              <div className="inv-doc__line">{order.customer?.email}</div>
-              <div className="inv-doc__line">{order.customer?.phone}</div>
-            </div>
-            <div>
-              <div className="inv-doc__label">Ship to</div>
-              <div className="inv-doc__line">
-                {order.shipping?.addressLine1}
-                {order.shipping?.addressLine2 ? (
-                  <>
-                    <br />
-                    {order.shipping.addressLine2}
-                  </>
+            <div className="amz-inv__foot">
+              <div>
+                {company.bankName || company.accountNumber || company.ifsc ? (
+                  <div className="amz-inv__bank">
+                    <strong>Bank details</strong>
+                    <p>
+                      {[
+                        company.bankName,
+                        company.accountName ? `A/c name: ${company.accountName}` : '',
+                        company.accountNumber ? `A/c no: ${company.accountNumber}` : '',
+                        company.ifsc ? `IFSC: ${company.ifsc}` : '',
+                      ]
+                        .filter(Boolean)
+                        .join('\n')}
+                    </p>
+                  </div>
                 ) : null}
-                <br />
-                {order.shipping?.city}, {order.shipping?.state} — {order.shipping?.pincode}
+                {terms.length ? (
+                  <div className="amz-inv__terms">
+                    <strong>Terms &amp; conditions</strong>
+                    <ol>
+                      {terms.map((term) => (
+                        <li key={term}>{term}</li>
+                      ))}
+                    </ol>
+                  </div>
+                ) : null}
+              </div>
+              <div className="amz-inv__sign">
+                For {legal}
+                <span>Authorised signatory</span>
               </div>
             </div>
           </div>
-
-          <div className="inv-doc__section">
-            <div className="inv-doc__label">Payment</div>
-            <div className="inv-doc__name">
-              {METHOD_LABELS[order.paymentMethod] || order.paymentMethod} ·{' '}
-              {PAYMENT_STATUS_LABELS[order.paymentStatus] || order.paymentStatus}
-            </div>
-            <div className="inv-doc__line">{paymentMetaLine(order)}</div>
-          </div>
-
-          <table className="inv-doc__table">
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th className="inv-doc__col-qty">Qty</th>
-                <th className="inv-doc__col-amt">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(order.items || []).map((item, idx) => (
-                <tr key={`${item.id}-${idx}`}>
-                  <td>
-                    <div className="inv-doc__item-name">{item.name}</div>
-                    <div className="inv-doc__item-spec">
-                      {[item.sizeLabel, item.weightLabel].filter(Boolean).join(' · ')}
-                    </div>
-                  </td>
-                  <td className="inv-doc__col-qty">{item.qty}</td>
-                  <td className="inv-doc__col-amt">{money(item.lineTotal ?? item.price * item.qty)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <div className="inv-doc__totals">
-            <div className="inv-doc__totals-row">
-              <span>Subtotal</span>
-              <span>{money(order.subtotal ?? order.total)}</span>
-            </div>
-            <div className="inv-doc__totals-row">
-              <span>Shipping</span>
-              <span>{money(order.shippingFee || 0)}</span>
-            </div>
-            <div className="inv-doc__totals-row inv-doc__totals-row--grand">
-              <span>Total</span>
-              <span>{money(order.total)}</span>
-            </div>
-          </div>
-
-          <p className="inv-doc__footnote">
-            Prices are inclusive of GST. All sales final — see our No Refund &amp; Cancellation policy.
-          </p>
         </div>
       </aside>
     </div>

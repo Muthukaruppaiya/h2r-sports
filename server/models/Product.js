@@ -6,6 +6,7 @@ const SizeSchema = new mongoose.Schema(
     label: { type: String, required: true },
     price: { type: Number, required: true },
     stock: { type: Number, default: 0, min: 0 },
+    lastPurchasePrice: { type: Number, default: 0, min: 0 },
   },
   { _id: false }
 );
@@ -34,7 +35,6 @@ const ProductSchema = new mongoose.Schema(
     willow:      { type: String, default: '' },
     madeIn:      { type: String, default: 'Tamil Nadu, India' },
     topSelling:  { type: Boolean, default: false },
-    mostLoved:   { type: Boolean, default: false },
     inStock:     { type: Boolean, default: true },
     sizes:       { type: [SizeSchema], default: [] },
     weights:     { type: [WeightSchema], default: [] },

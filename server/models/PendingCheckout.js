@@ -27,6 +27,8 @@ const PendingCheckoutSchema = new mongoose.Schema(
     items: { type: Array, required: true },
     subtotal: { type: Number, required: true },
     shippingFee: { type: Number, default: 0 },
+    discount: { type: Number, default: 0 },
+    couponCode: { type: String, default: '' },
     total: { type: Number, required: true },
     expiresAt: {
       type: Date,

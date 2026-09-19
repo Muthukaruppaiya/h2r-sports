@@ -33,10 +33,14 @@ import AdminInventory from './pages/admin/Inventory';
 import AdminCustomers from './pages/admin/Customers';
 import AdminReports from './pages/admin/Reports';
 import AdminIntegrations from './pages/admin/Integrations';
+import AdminCompanyDetails from './pages/admin/CompanyDetails';
+import AdminCoupons from './pages/admin/Coupons';
 import AdminMarketing from './pages/admin/Marketing';
 import AdminBilling from './pages/admin/Billing';
 import AdminStoreBilling from './pages/admin/StoreBilling';
 import AdminStoreBillingForm from './pages/admin/StoreBillingForm';
+import AdminGrn from './pages/admin/Grn';
+import AdminGrnForm from './pages/admin/GrnForm';
 import AdminReviews from './pages/admin/Reviews';
 
 function ScrollLock() {
@@ -119,6 +123,8 @@ export default function App() {
           <Route index element={<AdminDashboard />} />
           <Route path="orders" element={<AdminOrders />} />
           <Route path="inventory" element={<AdminInventory />} />
+          <Route path="grn" element={<AdminGrn />} />
+          <Route path="grn/new" element={<AdminGrnForm />} />
           <Route path="customers" element={<AdminCustomers />} />
           <Route path="reports" element={<AdminReports />} />
           <Route path="marketing" element={<AdminMarketing />} />
@@ -127,6 +133,8 @@ export default function App() {
           <Route path="store-billing/new" element={<AdminStoreBillingForm />} />
           <Route path="store-billing/:billId/edit" element={<AdminStoreBillingForm />} />
           <Route path="reviews" element={<AdminReviews />} />
+          <Route path="company" element={<AdminCompanyDetails />} />
+          <Route path="coupons" element={<AdminCoupons />} />
           <Route path="integrations" element={<AdminIntegrations />} />
         </Route>
       </Routes>

@@ -107,6 +107,10 @@ export function buildStatusUpdate(currentOrder, newStatus, adminName = 'Admin', 
       trackingId: String(courier.trackingId).trim(),
       trackingUrl: String(courier.trackingUrl || '').trim(),
       notes: String(courier.notes || '').trim(),
+      documentId: String(courier.documentId || '').trim(),
+      documentUrl: String(courier.documentUrl || '').trim(),
+      documentName: String(courier.documentName || '').trim(),
+      documentMime: String(courier.documentMime || '').trim(),
     };
   }
 

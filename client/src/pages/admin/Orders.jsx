@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import InvoiceDrawer from '../../components/admin/InvoiceDrawer';
+import { printAddressLabels } from '../../utils/printCourierSticker';
+import { mediaUrl } from '../../config/api';
 import {
   getStatusLabel,
   getStatusStyle,
@@ -61,170 +63,6 @@ function StatusBadge({ status }) {
   );
 }
 
-/** Escapes text dropped into the label's HTML template. */
-function escLabel(v) {
-  return String(v ?? '').replace(/[&<>"']/g, (c) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-  }[c]));
-}
-
-async function printAddressLabels(orders) {
-  // Open the window synchronously (before any await) or popup blockers will kill it once
-  // the store-address fetch below yields control back to the event loop.
-  const win = window.open('', '_blank', 'width=800,height=900');
-  if (!win) {
-    alert('Allow pop-ups to print address labels');
-    return;
-  }
-
-  let storeAddress = null;
-  try {
-    const res = await api.get('/admin/settings/store-address');
-    storeAddress = res.data?.storeAddress || null;
-  } catch {
-    storeAddress = null;
-  }
-  const hasFrom = Boolean(storeAddress?.line1 || storeAddress?.city || storeAddress?.pincode);
-
-  const pages = orders
-    .map((order, index) => {
-      const s = order.shipping || {};
-      const c = order.customer || {};
-      const isCod = order.paymentMethod === 'cod' || order.paymentStatus === 'pending_cod';
-      const itemCount = (order.items || []).reduce((sum, i) => sum + (Number(i.qty) || 0), 0);
-
-      return `
-        <section class="page">
-          <div class="label">
-            <div class="label__top">
-              <div class="brand">H2R Sports</div>
-              <div class="meta">Label ${index + 1} of ${orders.length}</div>
-            </div>
-
-            <div class="cod ${isCod ? 'cod--due' : 'cod--paid'}">
-              ${isCod ? `COD — COLLECT ${money(order.total)}` : 'PREPAID — DO NOT COLLECT'}
-            </div>
-
-            ${
-              hasFrom
-                ? `<div class="block block--from">
-                    <div class="block__tag">Ship From</div>
-                    <div class="block__name">${escLabel(storeAddress.name || 'H2R Sports')}</div>
-                    <div class="block__addr">
-                      ${escLabel(storeAddress.line1)}${storeAddress.line2 ? `, ${escLabel(storeAddress.line2)}` : ''}<br/>
-                      ${escLabel([storeAddress.city, storeAddress.state].filter(Boolean).join(', '))}${
-                        storeAddress.pincode ? ` — ${escLabel(storeAddress.pincode)}` : ''
-                      }
-                      ${storeAddress.phone ? `<br/>Ph: ${escLabel(storeAddress.phone)}` : ''}
-                      ${storeAddress.gstin ? `<br/>GSTIN: ${escLabel(storeAddress.gstin)}` : ''}
-                    </div>
-                  </div>`
-                : ''
-            }
-
-            <div class="block block--to">
-              <div class="block__tag">Ship To</div>
-              <div class="block__name block__name--lg">${escLabel(c.name)}</div>
-              <div class="block__addr block__addr--lg">
-                ${escLabel(s.addressLine1)}<br/>
-                ${s.addressLine2 ? `${escLabel(s.addressLine2)}<br/>` : ''}
-                ${escLabel(s.city)}, ${escLabel(s.state)} — ${escLabel(s.pincode)}<br/>
-                Phone: ${escLabel(c.phone)}
-              </div>
-            </div>
-
-            <div class="oid-box">
-              <div class="oid-box__label">Order No.</div>
-              <div class="oid-box__num">${escLabel(String(order.orderId || '').toUpperCase())}</div>
-            </div>
-
-            <div class="items">
-              <div class="items__head">${itemCount} item${itemCount === 1 ? '' : 's'}</div>
-              ${(order.items || [])
-                .map(
-                  (i) =>
-                    `${i.qty}× ${escLabel(i.name)}${i.sizeLabel ? ` (${escLabel(i.sizeLabel)})` : ''}${
-                      i.weightLabel ? ` · ${escLabel(i.weightLabel)}` : ''
-                    }`
-                )
-                .join('<br/>')}
-            </div>
-          </div>
-        </section>
-      `;
-    })
-    .join('');
-
-  win.document.write(`<!doctype html><html><head><title>Address Labels</title>
-    <style>
-      @page { size: A4; margin: 14mm; }
-      * { box-sizing: border-box; }
-      html, body { margin: 0; padding: 0; }
-      body { font-family: 'Segoe UI', system-ui, sans-serif; color: #0f172a; }
-      .page {
-        width: 100%;
-        min-height: 100vh;
-        page-break-after: always;
-        break-after: page;
-        display: flex;
-        align-items: flex-start;
-        padding-top: 8mm;
-      }
-      .page:last-child { page-break-after: auto; break-after: auto; }
-      .label {
-        width: 100%;
-        border: 2px solid #0f172a;
-        border-radius: 12px;
-        padding: 20px 24px 24px;
-      }
-      .label__top { display: flex; justify-content: space-between; align-items: baseline; }
-      .brand { font-size: 13px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #0f172a; }
-      .meta { font-size: 11px; color: #94a3b8; }
-      .cod {
-        margin: 12px 0 14px;
-        padding: 8px 12px;
-        border-radius: 8px;
-        font-weight: 800;
-        font-size: 15px;
-        letter-spacing: 0.03em;
-        text-align: center;
-      }
-      .cod--due { background: #fee2e2; color: #991b1b; border: 1.5px solid #fca5a5; }
-      .cod--paid { background: #dcfce7; color: #166534; border: 1.5px solid #86efac; }
-      .block { margin-bottom: 12px; }
-      .block--from { padding-bottom: 10px; border-bottom: 1px dashed #cbd5e1; }
-      .block__tag { font-size: 10px; text-transform: uppercase; color: #94a3b8; font-weight: 700; letter-spacing: 0.04em; }
-      .block__name { font-size: 14px; font-weight: 700; margin: 2px 0 4px; }
-      .block__name--lg { font-size: 24px; font-weight: 800; margin: 4px 0 8px; }
-      .block__addr { font-size: 12.5px; line-height: 1.55; color: #334155; }
-      .block__addr--lg { font-size: 15.5px; line-height: 1.6; color: #0f172a; }
-      .oid-box {
-        margin: 14px 0;
-        padding: 8px 12px;
-        border: 1.5px solid #0f172a;
-        border-radius: 8px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-      .oid-box__label { font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: 700; }
-      .oid-box__num { font-family: 'Consolas', monospace; font-size: 18px; font-weight: 800; letter-spacing: 0.06em; }
-      .items { margin-top: 14px; padding-top: 12px; border-top: 1px dashed #cbd5e1; font-size: 13px; color: #475569; }
-      .items__head { font-weight: 700; color: #0f172a; margin-bottom: 4px; }
-      @media print {
-        .page { min-height: auto; height: 100vh; page-break-after: always; break-after: page; }
-        .page:last-child { page-break-after: auto; break-after: auto; }
-      }
-    </style></head><body>${pages}
-    <script>window.onload = () => { setTimeout(() => window.print(), 250); }</script>
-    </body></html>`);
-  win.document.close();
-}
-
 export default function Orders() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [orders, setOrders] = useState([]);
@@ -243,6 +81,7 @@ export default function Orders() {
     trackingUrl: '',
     notes: '',
   });
+  const [courierFile, setCourierFile] = useState(null);
 
   useEffect(() => {
     fetchOrders();
@@ -281,13 +120,18 @@ export default function Orders() {
 
   const showToast = (type, message) => setToast({ type, message });
 
-  const applyStatus = async (order, newStatus, courier = null) => {
+  const applyStatus = async (order, newStatus, courier = null, documentFile = null) => {
     setUpdatingId(order.orderId);
     try {
-      const res = await api.put(`/admin/orders/${order.orderId}/status`, {
-        status: newStatus,
-        courier,
-      });
+      let payload = { status: newStatus, courier };
+      if (documentFile) {
+        const form = new FormData();
+        form.append('status', newStatus);
+        form.append('courier', JSON.stringify(courier || {}));
+        form.append('document', documentFile);
+        payload = form;
+      }
+      const res = await api.put(`/admin/orders/${order.orderId}/status`, payload);
       const updated = res.data.order;
       setOrders((prev) => prev.map((o) => (o.orderId === updated.orderId ? updated : o)));
       if (selectedOrder?.orderId === updated.orderId) setSelectedOrder(updated);
@@ -325,6 +169,7 @@ export default function Orders() {
         trackingUrl: order.courier?.trackingUrl || '',
         notes: order.courier?.notes || '',
       });
+      setCourierFile(null);
       setCourierModal({ order, status: next });
       return;
     }
@@ -422,7 +267,7 @@ export default function Orders() {
             onClick={printSelected}
             title="Select Packed orders below, then print shipping labels"
           >
-            🖨️ Print addresses ({selectedIds.length})
+            🖨️ Print stickers ({selectedIds.length})
           </button>
         </div>
       </div>
@@ -685,12 +530,12 @@ export default function Orders() {
               className="adm-drawer__body"
               onSubmit={(e) => {
                 e.preventDefault();
-                applyStatus(courierModal.order, courierModal.status, courierForm);
+                applyStatus(courierModal.order, courierModal.status, courierForm, courierFile);
               }}
             >
               <p className="ord-modal-copy">
-                Enter courier info for #{String(courierModal.order.orderId).slice(0, 12)}. Customers will see
-                this for tracking.
+                Enter courier info for #{String(courierModal.order.orderId).slice(0, 12)}. Customers get this
+                by email (with the uploaded copy attached) and can see it in their account.
               </p>
               <div className="adm-form-grid">
                 <div className="adm-field adm-field--full">
@@ -726,6 +571,18 @@ export default function Orders() {
                     value={courierForm.notes}
                     onChange={(e) => setCourierForm((p) => ({ ...p, notes: e.target.value }))}
                   />
+                </div>
+                <div className="adm-field adm-field--full">
+                  <label>Courier copy / receipt (PDF or image)</label>
+                  <input
+                    type="file"
+                    accept="application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp"
+                    onChange={(e) => setCourierFile(e.target.files?.[0] || null)}
+                  />
+                  <small style={{ color: '#64748b' }}>
+                    Optional. This file is emailed to the customer as the courier reference
+                    {courierFile ? ` · ${courierFile.name}` : ''}.
+                  </small>
                 </div>
               </div>
               <div className="ord-modal-actions">
@@ -828,6 +685,13 @@ function OrderDetailDrawer({ order, onClose, onStatusChange, onPrintInvoice, upd
                 </a>
               )}
               {order.courier.notes && <div style={{ marginTop: 6 }}>{order.courier.notes}</div>}
+              {order.courier.documentUrl ? (
+                <div style={{ marginTop: 8 }}>
+                  <a href={mediaUrl(order.courier.documentUrl)} target="_blank" rel="noreferrer">
+                    View courier copy ({order.courier.documentName || 'document'})
+                  </a>
+                </div>
+              ) : null}
             </section>
           )}
 

@@ -14,7 +14,6 @@ export default function Home() {
   const [collections, setCollections] = useState([]);
   const [featured, setFeatured] = useState([]);
   const [topSelling, setTopSelling] = useState([]);
-  const [mostLoved, setMostLoved] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -34,7 +33,6 @@ export default function Home() {
         setCollections(cols.collections || []);
         setFeatured(products);
         setTopSelling(products.filter((p) => p.topSelling));
-        setMostLoved(products.filter((p) => p.mostLoved));
         setReviews(revs.reviews || []);
       } catch {
         /* keep empty UI — never surface raw errors */
@@ -99,13 +97,19 @@ export default function Home() {
         </span>
       </section>
 
-      <StatsStrip />
-
       <CollectionGrid collections={collections} />
 
       <RevealOnScroll className="reveal-section">
         <ProductRail title="Our Bats" products={featured} loading={loading} />
       </RevealOnScroll>
+
+      <StatsStrip compact />
+
+      {topSelling.length > 0 && (
+        <RevealOnScroll className="reveal-section">
+          <ProductRail title="Top Selling" products={topSelling} loading={false} />
+        </RevealOnScroll>
+      )}
 
       <RevealOnScroll className="reveal-section">
         <VideoShowcase />
@@ -116,18 +120,6 @@ export default function Home() {
       </RevealOnScroll>
 
       <TrustStrip />
-
-      {topSelling.length > 0 && (
-        <RevealOnScroll className="reveal-section">
-          <ProductRail title="Top Selling" products={topSelling} loading={false} />
-        </RevealOnScroll>
-      )}
-
-      {mostLoved.length > 0 && (
-        <RevealOnScroll className="reveal-section">
-          <ProductRail title="Most Loved Bats" products={mostLoved} loading={false} />
-        </RevealOnScroll>
-      )}
 
       <RevealOnScroll className="reveal-section">
         <Reviews reviews={reviews} loading={loading} />

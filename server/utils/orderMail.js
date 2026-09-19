@@ -82,6 +82,7 @@ function trackingHtml(order) {
     <p style="margin:0;font-size:16px;font-weight:700;">${name}</p>
     <p style="margin:6px 0 0;">Tracking / AWB: <strong>${escapeHtml(awb)}</strong></p>
     ${notes ? `<p style="margin:8px 0 0;color:#475569;font-size:13px;">${escapeHtml(notes)}</p>` : ''}
+    ${courier.documentName ? `<p style="margin:8px 0 0;font-size:13px;">Courier copy attached: <strong>${escapeHtml(courier.documentName)}</strong></p>` : ''}
     ${button}
   </div>`;
 }
@@ -164,6 +165,7 @@ function buildMessage(order, event) {
       itemsText(order),
       `Total ${rupees(order.total)}`,
       trackingLine,
+      courier.documentName ? `Courier copy attached: ${courier.documentName}` : '',
       `Deliver to: ${addressText(order)}`,
       t.footerNote,
       `Support: ${STORE_PHONE} · ${STORE_EMAIL}`,
@@ -177,7 +179,7 @@ function buildMessage(order, event) {
  * Best-effort transactional email. Never throws to the order flow.
  * Always copies the store inbox. Customer is To: only when they gave a real email.
  */
-export async function sendOrderEmail(orderDoc, event) {
+export async function sendOrderEmail(orderDoc, event, extraAttachments = []) {
   const order = orderDoc?.toObject ? orderDoc.toObject() : orderDoc;
   if (!order) return { sent: false, reason: 'no-order' };
   if (!isMailConfigured()) {
@@ -193,5 +195,12 @@ export async function sendOrderEmail(orderDoc, event) {
   const to = toCustomer ? customerEmail : STORE_EMAIL;
   const bcc = toCustomer && STORE_EMAIL.toLowerCase() !== customerEmail.toLowerCase() ? STORE_EMAIL : undefined;
 
-  return sendMail({ to, bcc, subject: message.subject, text: message.text, html: message.html });
+  return sendMail({
+    to,
+    bcc,
+    subject: message.subject,
+    text: message.text,
+    html: message.html,
+    extraAttachments,
+  });
 }

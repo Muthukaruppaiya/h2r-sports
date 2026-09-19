@@ -1,6 +1,7 @@
 import Order from '../models/Order.js';
 import PendingCheckout from '../models/PendingCheckout.js';
 import Notification from '../models/Notification.js';
+import Coupon from '../models/Coupon.js';
 import { getRazorpayClient, mapRazorpayMethod } from './razorpay.js';
 import { sendOrderEmail } from './orderMail.js';
 import { decrementStock, restoreStock } from './stock.js';
@@ -152,12 +153,18 @@ export async function fulfillPaidCheckout({
     currency: draft.currency || 'INR',
     subtotal: draft.subtotal,
     shippingFee: draft.shippingFee || 0,
+    discount: draft.discount || 0,
+    couponCode: draft.couponCode || '',
     total: draft.total,
     stockDecremented: true,
   });
   } catch (err) {
     await restoreStock(draft.items);
     throw err;
+  }
+
+  if (draft.couponCode) {
+    await Coupon.updateOne({ code: draft.couponCode }, { $inc: { usedCount: 1 } });
   }
 
   await PendingCheckout.deleteOne({ _id: draft._id });

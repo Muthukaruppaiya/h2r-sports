@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { BRAND, formatINR, INDIAN_STATES, savePercent } from '../utils/india';
+import { BRAND, formatINR, INDIAN_STATES } from '../utils/india';
 import { api } from '../api/store';
 import { clearBuyNowItem, getCart, removeCartItem, updateCartQty } from '../utils/checkoutItem';
 import { buildRazorpayOptions, openRazorpayCheckout } from '../utils/razorpay';
@@ -86,22 +86,40 @@ export default function Checkout() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [pincodeStatus, setPincodeStatus] = useState(''); // '' | 'loading' | 'found' | 'notfound' | 'error'
+  const [couponInput, setCouponInput] = useState('');
+  const [coupon, setCoupon] = useState(null);
+  const [couponError, setCouponError] = useState('');
+  const [couponBusy, setCouponBusy] = useState(false);
   const autoFilledRef = useRef({ city: '', state: '' });
 
   const total = items.reduce((sum, row) => sum + row.price * row.qty, 0);
-  const compareAt = items.reduce((sum, row) => {
-    const mrp = row.compareAt ? Number(row.compareAt) * row.qty : row.price * row.qty;
-    return sum + mrp;
-  }, 0);
-  const discount = compareAt > total ? compareAt - total : 0;
-  const savePct = savePercent(total, compareAt);
+  const couponOff = coupon?.discount || 0;
   const shippingFee = 0;
-  const payable = total + shippingFee;
+  const payable = Math.max(0, total + shippingFee - couponOff);
   const bagLabel = items.map((row) => row.name).filter(Boolean).join(', ') || 'H2R bats';
   const selectedAddress = useMemo(
     () => addresses.find((a) => a.id === selectedAddressId) || addresses.find((a) => a.isDefault) || addresses[0],
     [addresses, selectedAddressId]
   );
+
+  useEffect(() => {
+    if (!coupon?.code || !total) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await api.validateCoupon(coupon.code, total);
+        if (!cancelled) setCoupon({ code: data.code, discount: data.discount, type: data.type, value: data.value });
+      } catch {
+        if (!cancelled) {
+          setCoupon(null);
+          setCouponError('Coupon no longer applies to this bag');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [total, coupon?.code]);
 
   useEffect(() => {
     const boot = async () => {
@@ -293,6 +311,32 @@ export default function Checkout() {
     setStep('summary');
   }
 
+  async function applyCoupon() {
+    setCouponError('');
+    const code = couponInput.trim();
+    if (!code) {
+      setCouponError('Enter a coupon code');
+      return;
+    }
+    setCouponBusy(true);
+    try {
+      const data = await api.validateCoupon(code, total);
+      setCoupon({ code: data.code, discount: data.discount, type: data.type, value: data.value });
+      setCouponInput(data.code);
+    } catch (err) {
+      setCoupon(null);
+      setCouponError(err.response?.data?.error || err.message || 'Invalid coupon');
+    } finally {
+      setCouponBusy(false);
+    }
+  }
+
+  function removeCoupon() {
+    setCoupon(null);
+    setCouponError('');
+    setCouponInput('');
+  }
+
   async function startPayment() {
     if (!items.length || !selectedAddress || !user) return;
     setError('');
@@ -319,6 +363,7 @@ export default function Checkout() {
           weightId: row.weightId || '',
           qty: row.qty,
         })),
+      couponCode: coupon?.code || '',
     };
 
     try {
@@ -688,8 +733,7 @@ export default function Checkout() {
 
           <div className="ck-footbar">
             <div>
-              <span className="ck-footbar__mrp">{compareAt > total ? formatINR(compareAt) : ''}</span>
-              <strong>{formatINR(payable)}</strong>
+              <strong>{formatINR(total)}</strong>
             </div>
             <button type="button" className="ck-btn ck-btn--cta" onClick={goSummary} disabled={!selectedAddress || !orderEmail.trim()}>
               Continue
@@ -728,7 +772,6 @@ export default function Checkout() {
           </div>
 
           <div className="ck-card ck-product">
-            {savePct ? <span className="ck-product__deal">Hot Deal</span> : null}
             {items.map((row) => (
               <div key={row.key} className="ck-product__row">
                 <img src={mediaUrl(row.image) || '/products/placeholders/front.svg'} alt="" />
@@ -761,22 +804,46 @@ export default function Checkout() {
                 </div>
               </div>
             ))}
-            <Link to="/shop" className="ck-link" style={{ marginTop: 10, display: 'inline-block' }}>
-              + Add another bat
-            </Link>
           </div>
 
           <div className="ck-card">
             <h2>Price Details</h2>
+            <div className="ck-coupon">
+              <input
+                value={couponInput}
+                onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                placeholder="Coupon code"
+                disabled={Boolean(coupon)}
+              />
+              {coupon ? (
+                <button type="button" className="ck-btn" onClick={removeCoupon}>
+                  Remove
+                </button>
+              ) : (
+                <button type="button" className="ck-btn" onClick={applyCoupon} disabled={couponBusy}>
+                  {couponBusy ? '…' : 'Apply'}
+                </button>
+              )}
+            </div>
+            {couponError ? <p className="ck-coupon__err">{couponError}</p> : null}
+            {coupon ? (
+              <p className="ck-coupon__ok">
+                {coupon.code} applied — you save {formatINR(coupon.discount)}
+              </p>
+            ) : null}
             <div className="ck-price-box">
               <div>
-                <span>MRP {compareAt > total ? '(incl. of all taxes)' : ''}</span>
-                <span>{formatINR(compareAt > total ? compareAt : total)}</span>
+                <span>Price</span>
+                <span>{formatINR(total)}</span>
               </div>
-              {discount > 0 && (
+              {couponOff > 0 && (
                 <div className="is-save">
-                  <span>Discounts</span>
-                  <span>− {formatINR(discount)}</span>
+                  <span>
+                    Coupon
+                    {coupon.type === 'percent' ? ` ${coupon.value}%` : ''}
+                    {` (${coupon.code})`}
+                  </span>
+                  <span>− {formatINR(couponOff)}</span>
                 </div>
               )}
               <div>
@@ -784,12 +851,16 @@ export default function Checkout() {
                 <span>FREE</span>
               </div>
               <div className="ck-price-box__total">
-                <span>Total Amount</span>
+                <span>To pay</span>
                 <strong>{formatINR(payable)}</strong>
               </div>
             </div>
-            {discount > 0 && (
-              <div className="ck-save-banner">You’ll save {formatINR(discount)} on this order!</div>
+            {couponOff > 0 && (
+              <div className="ck-save-banner">
+                {coupon.type === 'percent'
+                  ? `${coupon.value}% of price = ${formatINR(couponOff)} off`
+                  : `Coupon saves ${formatINR(couponOff)}`}
+              </div>
             )}
           </div>
 
@@ -821,7 +892,7 @@ export default function Checkout() {
 
           <div className="ck-footbar">
             <div>
-              {compareAt > total ? <span className="ck-footbar__mrp">{formatINR(compareAt)}</span> : null}
+              {couponOff > 0 ? <span className="ck-footbar__mrp">{formatINR(total)}</span> : null}
               <strong>{formatINR(payable)}</strong>
             </div>
             <button type="button" className="ck-btn ck-btn--cta" onClick={startPayment} disabled={submitting}>

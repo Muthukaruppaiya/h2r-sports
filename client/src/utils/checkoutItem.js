@@ -65,18 +65,15 @@ export function setCart(items) {
   return next;
 }
 
-/** Adds a bat to the bag. Same size/weight increases qty. */
-export function addCartItem(item) {
+/** Replaces checkout with this one product (no shopping bag). */
+export function setBuyNowItem(item) {
   const incoming = normalize(item);
   if (!incoming) return getCart();
-  const cart = getCart();
-  const idx = cart.findIndex((row) => row.key === incoming.key);
-  if (idx >= 0) {
-    cart[idx] = { ...cart[idx], qty: cart[idx].qty + incoming.qty };
-  } else {
-    cart.push(incoming);
-  }
-  return setCart(cart);
+  return setCart([incoming]);
+}
+
+export function addCartItem(item) {
+  return setBuyNowItem(item);
 }
 
 export function updateCartQty(key, qty) {
@@ -90,11 +87,6 @@ export function removeCartItem(key) {
 
 export function cartCount(items = getCart()) {
   return items.reduce((n, row) => n + (Number(row.qty) || 0), 0);
-}
-
-/** Keep old name: add to bag (does not wipe other bats). */
-export function setBuyNowItem(item) {
-  return addCartItem(item);
 }
 
 export function getBuyNowItem() {

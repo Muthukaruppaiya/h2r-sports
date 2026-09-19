@@ -58,6 +58,11 @@ export const api = {
     return res.data;
   },
 
+  async validateCoupon(code, subtotal) {
+    const res = await client.post('/coupons/validate', { code, subtotal });
+    return res.data;
+  },
+
   async verifyRazorpayPayment(payload) {
     const res = await client.post('/payments/razorpay/verify', payload);
     return res.data;

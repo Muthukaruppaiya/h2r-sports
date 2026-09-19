@@ -74,11 +74,11 @@ const PRODUCTS = [
   {
     id: 'thala-hard',
     name: 'Thala Edition Hard Tennis Bat',
-    tagline: 'Most loved hard tennis',
+    tagline: 'Hard tennis bat',
     price: 2799, compareAt: 3499,
     collection: 'hard-tennis', category: 'Hard Tennis', badge: 'Sale',
     weight: '850–950 g', willow: 'Kashmir Willow', madeIn: 'Tamil Nadu, India',
-    topSelling: true, mostLoved: true, inStock: true,
+    topSelling: true, inStock: true,
     sizes: [
       { id: 'sh', label: 'Short Handle (SH)', price: 2799 },
       { id: 'lh', label: 'Long Handle (LH)', price: 2899 },
@@ -94,7 +94,7 @@ const PRODUCTS = [
     price: 3499, compareAt: 5500,
     collection: 'hard-tennis', category: 'Hard Tennis', badge: 'Sale',
     weight: '880–980 g', willow: 'Kashmir Willow', madeIn: 'Tamil Nadu, India',
-    topSelling: true, mostLoved: true, inStock: true,
+    topSelling: true, inStock: true,
     sizes: [
       { id: 'sh', label: 'Short Handle (SH)', price: 3499 },
       { id: 'lh', label: 'Long Handle (LH)', price: 3599 },
@@ -110,7 +110,7 @@ const PRODUCTS = [
     price: 5999, compareAt: 7000,
     collection: 'hard-tennis', category: 'Hard Tennis', badge: 'Sale',
     weight: '900–1000 g', willow: 'Top Grade Kashmir Willow', madeIn: 'Tamil Nadu, India',
-    topSelling: true, mostLoved: false, inStock: true,
+    topSelling: true, inStock: true,
     sizes: [
       { id: 'sh', label: 'Short Handle (SH)', price: 5999 },
       { id: 'lh', label: 'Long Handle (LH)', price: 6199 },
@@ -126,7 +126,7 @@ const PRODUCTS = [
     price: 2299, compareAt: 2500,
     collection: 'hard-tennis', category: 'Hard Tennis', badge: 'Sale',
     weight: '850–940 g', willow: 'Kashmir Willow', madeIn: 'Tamil Nadu, India',
-    topSelling: false, mostLoved: true, inStock: true,
+    topSelling: false, inStock: true,
     sizes: [
       { id: 'sh', label: 'Short Handle (SH)', price: 2299 },
       { id: 'lh', label: 'Long Handle (LH)', price: 2399 },
@@ -142,7 +142,7 @@ const PRODUCTS = [
     price: 2799, compareAt: 3299,
     collection: 'hard-tennis', category: 'Hard Tennis', badge: 'Sale',
     weight: '860–950 g', willow: 'Kashmir Willow', madeIn: 'Tamil Nadu, India',
-    topSelling: false, mostLoved: true, inStock: true,
+    topSelling: false, inStock: true,
     sizes: [
       { id: 'sh', label: 'Short Handle (SH)', price: 2799 },
       { id: 'lh', label: 'Long Handle (LH)', price: 2899 },
@@ -158,7 +158,7 @@ const PRODUCTS = [
     price: 4499, compareAt: 5499,
     collection: 'hard-tennis', category: 'Hard Tennis', badge: 'Sale',
     weight: '870–970 g', willow: 'Kashmir Willow', madeIn: 'Tamil Nadu, India',
-    topSelling: false, mostLoved: false, inStock: true,
+    topSelling: false, inStock: true,
     sizes: [
       { id: 'sh', label: 'Short Handle (SH)', price: 4499 },
       { id: 'lh', label: 'Long Handle (LH)', price: 4599 },
@@ -174,7 +174,7 @@ const PRODUCTS = [
     price: 3299, compareAt: 3999,
     collection: 'soft-tennis', category: 'Soft Tennis', badge: 'Sale',
     weight: '820–920 g', willow: 'Kashmir Willow', madeIn: 'Tamil Nadu, India',
-    topSelling: false, mostLoved: true, inStock: true,
+    topSelling: false, inStock: true,
     sizes: [
       { id: 'sh', label: 'Short Handle (SH)', price: 3299 },
       { id: 'lh', label: 'Long Handle (LH)', price: 3399 },
@@ -190,7 +190,7 @@ const PRODUCTS = [
     price: 2999, compareAt: 3799,
     collection: 'soft-tennis', category: 'Soft Tennis', badge: 'Sale',
     weight: '830–930 g', willow: 'Kashmir Willow', madeIn: 'Tamil Nadu, India',
-    topSelling: false, mostLoved: true, inStock: true,
+    topSelling: false, inStock: true,
     sizes: [
       { id: 'sh', label: 'Short Handle (SH)', price: 2999 },
       { id: 'lh', label: 'Long Handle (LH)', price: 3099 },
@@ -206,7 +206,7 @@ const PRODUCTS = [
     price: 4499, compareAt: 5500,
     collection: 'season', category: 'Season', badge: 'Sale',
     weight: '1140–1200 g', willow: 'English Willow', madeIn: 'Tamil Nadu, India',
-    topSelling: true, mostLoved: true, inStock: true,
+    topSelling: true, inStock: true,
     sizes: [
       { id: 'sh', label: 'Short Handle (SH)', price: 4499 },
       { id: 'lh', label: 'Long Handle (LH)', price: 4699 },
@@ -223,7 +223,7 @@ const PRODUCTS = [
     price: 9500, compareAt: 14999,
     collection: 'season', category: 'Season', badge: 'Sale',
     weight: '1160–1220 g', willow: 'Grade English Willow', madeIn: 'Tamil Nadu, India',
-    topSelling: false, mostLoved: true, inStock: true,
+    topSelling: false, inStock: true,
     sizes: [
       { id: 'sh', label: 'Short Handle (SH)', price: 9500 },
       { id: 'lh', label: 'Long Handle (LH)', price: 9800 },
@@ -239,7 +239,7 @@ const PRODUCTS = [
     price: 3499, compareAt: 4000,
     collection: 'season', category: 'Season', badge: 'Sale',
     weight: '1100–1180 g', willow: 'Kashmir Willow', madeIn: 'Tamil Nadu, India',
-    topSelling: false, mostLoved: true, inStock: true,
+    topSelling: false, inStock: true,
     sizes: [
       { id: 'sh', label: 'Short Handle (SH)', price: 3499 },
       { id: 'lh', label: 'Long Handle (LH)', price: 3599 },
@@ -256,7 +256,7 @@ const PRODUCTS = [
     price: 2499, compareAt: 3200,
     collection: 'season', category: 'Season', badge: 'Sale',
     weight: '900–1050 g', willow: 'Top Grade Kashmir Willow', madeIn: 'Tamil Nadu, India',
-    topSelling: false, mostLoved: true, inStock: true,
+    topSelling: false, inStock: true,
     sizes: [
       { id: 'size-4', label: 'Size 4', price: 2299 },
       { id: 'size-5', label: 'Size 5', price: 2399 },

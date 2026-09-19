@@ -1,16 +1,6 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import api from '../../api/client';
-
-const EMPTY_ADDRESS = {
-  name: 'H2R Sports',
-  phone: '',
-  line1: '',
-  line2: '',
-  city: '',
-  state: '',
-  pincode: '',
-  gstin: '',
-};
 
 export default function Integrations() {
   const [settings, setSettings] = useState(null);
@@ -18,11 +8,6 @@ export default function Integrations() {
   const [switching, setSwitching] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-
-  const [address, setAddress] = useState(EMPTY_ADDRESS);
-  const [addressLoading, setAddressLoading] = useState(true);
-  const [addressSaving, setAddressSaving] = useState(false);
-  const [addressNotice, setAddressNotice] = useState('');
 
   const load = async () => {
     try {
@@ -36,37 +21,9 @@ export default function Integrations() {
     }
   };
 
-  const loadAddress = async () => {
-    try {
-      const res = await api.get('/admin/settings/store-address');
-      setAddress({ ...EMPTY_ADDRESS, ...(res.data.storeAddress || {}) });
-    } catch {
-      /* leave defaults — form still usable */
-    } finally {
-      setAddressLoading(false);
-    }
-  };
-
   useEffect(() => {
     load();
-    loadAddress();
   }, []);
-
-  const saveAddress = async (e) => {
-    e.preventDefault();
-    setAddressSaving(true);
-    setAddressNotice('');
-    try {
-      const res = await api.put('/admin/settings/store-address', address);
-      setAddress({ ...EMPTY_ADDRESS, ...(res.data.storeAddress || {}) });
-      setAddressNotice('Saved — shipping labels will now show this as the "Ship From" address.');
-      window.setTimeout(() => setAddressNotice(''), 5000);
-    } catch (err) {
-      setAddressNotice(err.response?.data?.error || 'Failed to save address');
-    } finally {
-      setAddressSaving(false);
-    }
-  };
 
   const switchMode = async (mode) => {
     if (!settings || mode === settings.mode) return;
@@ -153,97 +110,13 @@ export default function Integrations() {
 
       <section className="pay-mode">
         <div className="pay-mode__head">
-          <h2>Return / pickup address</h2>
+          <h2>Company details</h2>
         </div>
         <p className="pay-mode__lead">
-          Printed as the <strong>"Ship From"</strong> block on every shipping address label (Admin →
-          Online Orders → Print addresses). Leave blank and the label will simply omit this section.
+          GSTIN, address, bank and invoice footer are managed in{' '}
+          <Link to="/admin/company">Online Store → Company details</Link>. Invoices and courier
+          stickers read from there.
         </p>
-
-        {addressLoading ? (
-          <p className="adm-muted">Loading…</p>
-        ) : (
-          <form className="adm-form-grid" onSubmit={saveAddress}>
-            {addressNotice ? (
-              <p
-                className={addressNotice.startsWith('Saved') ? 'pay-mode__notice' : 'adm-error'}
-                style={{ gridColumn: '1 / -1' }}
-              >
-                {addressNotice}
-              </p>
-            ) : null}
-            <div className="adm-field">
-              <label>Shop / sender name</label>
-              <input
-                value={address.name}
-                onChange={(e) => setAddress((a) => ({ ...a, name: e.target.value }))}
-                placeholder="H2R Sports"
-              />
-            </div>
-            <div className="adm-field">
-              <label>Phone</label>
-              <input
-                value={address.phone}
-                onChange={(e) => setAddress((a) => ({ ...a, phone: e.target.value }))}
-                placeholder="+91 99949 78963"
-              />
-            </div>
-            <div className="adm-field adm-field--full">
-              <label>Address line 1</label>
-              <input
-                value={address.line1}
-                onChange={(e) => setAddress((a) => ({ ...a, line1: e.target.value }))}
-                placeholder="Shop / building, street"
-              />
-            </div>
-            <div className="adm-field adm-field--full">
-              <label>Address line 2</label>
-              <input
-                value={address.line2}
-                onChange={(e) => setAddress((a) => ({ ...a, line2: e.target.value }))}
-                placeholder="Area / landmark (optional)"
-              />
-            </div>
-            <div className="adm-field">
-              <label>City</label>
-              <input
-                value={address.city}
-                onChange={(e) => setAddress((a) => ({ ...a, city: e.target.value }))}
-              />
-            </div>
-            <div className="adm-field">
-              <label>State</label>
-              <input
-                value={address.state}
-                onChange={(e) => setAddress((a) => ({ ...a, state: e.target.value }))}
-              />
-            </div>
-            <div className="adm-field">
-              <label>PIN code</label>
-              <input
-                inputMode="numeric"
-                maxLength={6}
-                value={address.pincode}
-                onChange={(e) =>
-                  setAddress((a) => ({ ...a, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) }))
-                }
-              />
-            </div>
-            <div className="adm-field">
-              <label>GSTIN (optional)</label>
-              <input
-                value={address.gstin}
-                onChange={(e) => setAddress((a) => ({ ...a, gstin: e.target.value.toUpperCase() }))}
-                placeholder="33XXXXX0000X1Z5"
-              />
-            </div>
-            <div className="adm-field adm-field--full">
-              <button type="submit" className="adm-btn adm-btn--primary" disabled={addressSaving}>
-                {addressSaving ? 'Saving…' : 'Save address'}
-              </button>
-            </div>
-          </form>
-        )}
       </section>
 
       <ul>

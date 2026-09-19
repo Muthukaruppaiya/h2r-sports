@@ -21,6 +21,10 @@ const CourierSchema = new mongoose.Schema(
     trackingId: { type: String, default: '' },
     trackingUrl: { type: String, default: '' },
     notes: { type: String, default: '' },
+    documentId: { type: String, default: '' },
+    documentUrl: { type: String, default: '' },
+    documentName: { type: String, default: '' },
+    documentMime: { type: String, default: '' },
   },
   { _id: false }
 );
@@ -81,6 +85,7 @@ const OrderSchema = new mongoose.Schema(
     subtotal:    { type: Number, required: true },
     shippingFee: { type: Number, default: 0 },
     discount:    { type: Number, default: 0 },
+    couponCode:  { type: String, default: '' },
     total:       { type: Number, required: true },
     statusTimestamps: {
       orderedAt:   { type: Date },

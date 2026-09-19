@@ -41,10 +41,11 @@ const client = {
   },
   
   async put(endpoint, data) {
+    const isFormData = data instanceof FormData;
     const res = await fetch(`${BASE_URL}${endpoint}`, {
       method: 'PUT',
-      headers: getHeaders(),
-      body: JSON.stringify(data)
+      headers: getHeaders(isFormData),
+      body: isFormData ? data : JSON.stringify(data)
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { formatINR, INDIA, BRAND } from '../utils/india';
 import { buildWhatsAppOrderUrl } from '../utils/whatsapp';
-import { addCartItem } from '../utils/checkoutItem';
+import { setBuyNowItem } from '../utils/checkoutItem';
 import ProductGallery from '../components/ProductGallery';
 import WriteReview from '../components/WriteReview';
 import RevealOnScroll from '../components/RevealOnScroll';
@@ -16,7 +16,6 @@ export default function ProductDetail() {
   const [weightId, setWeightId] = useState('');
   const [qty, setQty] = useState(1);
   const [error, setError] = useState('');
-  const [addedNote, setAddedNote] = useState('');
   const [descOpen, setDescOpen] = useState(false);
 
   useEffect(() => {
@@ -126,15 +125,9 @@ export default function ProductDetail() {
     qty,
   };
 
-  const addToBag = () => {
-    if (soldOut) return;
-    addCartItem(buyPayload);
-    setAddedNote('Added to bag — you can pick another bat, or checkout.');
-  };
-
   const buyNow = () => {
     if (soldOut) return;
-    addCartItem(buyPayload);
+    setBuyNowItem(buyPayload);
     navigate('/checkout');
   };
 
@@ -146,7 +139,7 @@ export default function ProductDetail() {
       qty,
       pageUrl: window.location.href,
     });
-    window.open(url, '_blank', 'noopener,noreferrer');
+    window.location.href = url;
   };
 
   return (
@@ -268,13 +261,9 @@ export default function ProductDetail() {
             >
               {soldOut ? 'Sold out' : `Buy now — ${formatINR(size.price * qty)}`}
             </button>
-            <button type="button" className="btn btn--ghost btn--full" onClick={addToBag} disabled={soldOut}>
-              Add to bag
-            </button>
             <button type="button" className="btn btn--whatsapp btn--full" onClick={buyWhatsApp}>
               Buy using WhatsApp
             </button>
-            {addedNote ? <p className="pdp__ship-note">{addedNote}</p> : null}
           </div>
 
           <p className="pdp__ship-note">
@@ -313,8 +302,8 @@ export default function ProductDetail() {
           >
             {soldOut ? 'Sold out' : 'Buy Now'}
           </button>
-          <button type="button" className="pdp-sticky__whatsapp" onClick={addToBag} disabled={soldOut}>
-            Add
+          <button type="button" className="pdp-sticky__whatsapp" onClick={buyWhatsApp}>
+            WhatsApp
           </button>
         </div>
       </div>

@@ -100,18 +100,20 @@ function StatCard({ stat, active, index }) {
       <span className="stats__icon" aria-hidden="true">
         {ICONS[stat.icon]}
       </span>
-      <strong className="stats__value">
-        {display}
-        {stat.suffix ? <span className="stats__suffix">{stat.suffix}</span> : null}
-        {stat.star ? <span className="stats__star" aria-hidden="true">★</span> : null}
-      </strong>
-      <span className="stats__label">{stat.label}</span>
-      <span className="stats__hint">{stat.hint}</span>
+      <div className="stats__copy">
+        <strong className="stats__value">
+          {display}
+          {stat.suffix ? <span className="stats__suffix">{stat.suffix}</span> : null}
+          {stat.star ? <span className="stats__star" aria-hidden="true">★</span> : null}
+        </strong>
+        <span className="stats__label">{stat.label}</span>
+        <span className="stats__hint">{stat.hint}</span>
+      </div>
     </article>
   );
 }
 
-export default function StatsStrip() {
+export default function StatsStrip({ compact = false }) {
   const [active, setActive] = useState(false);
   const ref = useRef(null);
 
@@ -134,13 +136,17 @@ export default function StatsStrip() {
   }, []);
 
   return (
-    <section className="stats" ref={ref} aria-label="H2R Sports in numbers">
+    <section className={`stats${compact ? ' stats--compact' : ''}`} ref={ref} aria-label="H2R Sports in numbers">
       <div className="stats__glow" aria-hidden="true" />
       <div className="container stats__inner">
-        <header className="stats__head">
-          <p className="stats__eyebrow">H2R by the numbers</p>
-          <h2>Built for match day. Trusted across India.</h2>
-        </header>
+        {compact ? (
+          <p className="stats__inline-label">Trusted by players across India</p>
+        ) : (
+          <header className="stats__head">
+            <p className="stats__eyebrow">H2R by the numbers</p>
+            <h2>Built for match day. Trusted across India.</h2>
+          </header>
+        )}
         <div className="stats__grid">
           {STATS.map((stat, i) => (
             <StatCard key={stat.label} stat={stat} active={active} index={i} />

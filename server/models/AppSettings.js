@@ -7,13 +7,25 @@ import mongoose from 'mongoose';
 const StoreAddressSchema = new mongoose.Schema(
   {
     name: { type: String, default: 'H2R Sports' },
+    legalName: { type: String, default: '' },
+    tagline: { type: String, default: '' },
     phone: { type: String, default: '' },
+    email: { type: String, default: '' },
+    whatsapp: { type: String, default: '' },
+    website: { type: String, default: '' },
     line1: { type: String, default: '' },
     line2: { type: String, default: '' },
     city: { type: String, default: '' },
     state: { type: String, default: '' },
     pincode: { type: String, default: '' },
     gstin: { type: String, default: '' },
+    pan: { type: String, default: '' },
+    invoiceNote: { type: String, default: '' },
+    invoiceTerms: { type: [String], default: () => [] },
+    bankName: { type: String, default: '' },
+    accountName: { type: String, default: '' },
+    accountNumber: { type: String, default: '' },
+    ifsc: { type: String, default: '' },
   },
   { _id: false }
 );

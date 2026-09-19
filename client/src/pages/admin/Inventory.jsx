@@ -39,7 +39,6 @@ const EMPTY_FORM = {
   weightRanges: [{ from: '', to: '' }],
   inStock: true,
   topSelling: false,
-  mostLoved: false,
 };
 
 export default function Inventory() {
@@ -158,7 +157,6 @@ export default function Inventory() {
           : [{ from: '', to: '' }],
         inStock: product.inStock !== false,
         topSelling: !!product.topSelling,
-        mostLoved: !!product.mostLoved,
       });
     } else {
       setEditingProduct(null);
@@ -303,7 +301,6 @@ export default function Inventory() {
         features: featuresArray,
         inStock: formData.inStock,
         topSelling: formData.topSelling,
-        mostLoved: formData.mostLoved,
         images: imagesArray,
         sizes: sizesArray,
         weights: weightsArray,
@@ -956,15 +953,6 @@ export default function Inventory() {
                       onChange={handleFormChange}
                     />
                     Top selling
-                  </label>
-                  <label>
-                    <input
-                      type="checkbox"
-                      name="mostLoved"
-                      checked={formData.mostLoved}
-                      onChange={handleFormChange}
-                    />
-                    Most loved
                   </label>
                 </div>
               </section>

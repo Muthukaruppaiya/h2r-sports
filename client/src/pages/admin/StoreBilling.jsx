@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
+import StoreBillInvoice from '../../components/admin/StoreBillInvoice';
 
 const METHODS = [
   { id: 'cash', label: 'Cash', bg: '#dcfce7', color: '#166534' },
@@ -38,6 +39,7 @@ export default function StoreBilling() {
   const [method, setMethod] = useState('all');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [printBill, setPrintBill] = useState(null);
 
   const fetchAll = async () => {
     try {
@@ -215,6 +217,13 @@ export default function StoreBilling() {
                           <button
                             type="button"
                             className="adm-btn adm-btn--ghost"
+                            onClick={() => setPrintBill(bill)}
+                          >
+                            Invoice
+                          </button>
+                          <button
+                            type="button"
+                            className="adm-btn adm-btn--ghost"
                             onClick={() => navigate(`/admin/store-billing/${bill.billId}/edit`)}
                           >
                             Edit
@@ -232,6 +241,7 @@ export default function StoreBilling() {
           </div>
         )}
       </div>
+      {printBill ? <StoreBillInvoice bill={printBill} onClose={() => setPrintBill(null)} /> : null}
     </div>
   );
 }

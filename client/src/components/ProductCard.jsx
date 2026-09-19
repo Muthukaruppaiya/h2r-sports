@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { formatINR } from '../utils/india';
 import { mediaUrl } from '../config/api.js';
-import { addCartItem } from '../utils/checkoutItem';
+import { setBuyNowItem } from '../utils/checkoutItem';
 
 function productIsInStock(product) {
   if (product?.inStock === false) return false;
@@ -27,7 +27,7 @@ export default function ProductCard({ product }) {
           ? `${defaultWeight.from}g – ${defaultWeight.to}g`
           : '')
       : '';
-    addCartItem({
+    setBuyNowItem({
       id: product.id,
       name: product.name,
       image: product.images?.[0] || product.image || '',

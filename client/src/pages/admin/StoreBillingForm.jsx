@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../api/client';
 import { mediaUrl } from '../../config/api.js';
 import { money } from './StoreBilling';
+import StoreBillInvoice from '../../components/admin/StoreBillInvoice';
 
 const METHODS = [
   { id: 'cash', label: 'Cash' },
@@ -80,6 +81,7 @@ export default function StoreBillingForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [printOpen, setPrintOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,6 +128,24 @@ export default function StoreBillingForm() {
   const gross = useMemo(() => lines.reduce((sum, line) => sum + lineTotal(line), 0), [lines]);
   const disc = Math.min(Math.max(0, Number(discount) || 0), gross);
   const amount = Math.max(0, gross - disc);
+  const previewBill = {
+    billId: billId || 'DRAFT',
+    customerName,
+    customerPhone,
+    discount: disc,
+    amount,
+    paymentMethod,
+    soldAt,
+    items: lines
+      .filter((line) => line.itemName)
+      .map((line) => ({
+        itemName: line.itemName,
+        sizeLabel: line.sizeLabel,
+        weightLabel: line.weightLabel,
+        qty: Number(line.qty) || 1,
+        unitPrice: Number(line.unitPrice) || 0,
+      })),
+  };
   const batCount = lines.filter((l) => l.productId).length;
 
   const patchLine = (index, patch) => {
@@ -432,12 +452,16 @@ export default function StoreBillingForm() {
             <button type="submit" className="adm-btn adm-btn--primary" disabled={saving}>
               {saving ? 'Saving…' : isEdit ? 'Save changes' : `Collect ${money(amount)}`}
             </button>
+            <button type="button" className="adm-btn adm-btn--ghost" onClick={() => setPrintOpen(true)}>
+              Preview invoice
+            </button>
             <button type="button" className="adm-btn adm-btn--ghost" onClick={() => navigate('/admin/store-billing')}>
               Cancel
             </button>
           </div>
         </aside>
       </form>
+      {printOpen ? <StoreBillInvoice bill={previewBill} onClose={() => setPrintOpen(false)} /> : null}
     </div>
   );
 }

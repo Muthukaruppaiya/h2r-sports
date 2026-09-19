@@ -77,6 +77,7 @@ const NAV = [
     icon: 'items',
     children: [
       { label: 'Inventory', to: '/admin/inventory', tab: 'products' },
+      { label: 'GRN', to: '/admin/grn' },
       { label: 'Categories', to: '/admin/inventory?tab=categories', tab: 'categories' },
       { label: 'Collections', to: '/admin/inventory?tab=collections', tab: 'collections' },
     ],
@@ -98,7 +99,7 @@ const NAV = [
     id: 'store',
     label: 'Online Store',
     icon: 'store',
-    children: [{ label: 'Visit Store', to: '/', external: true }],
+    children: [{ label: 'Visit Store', to: '/', external: true }, { label: 'Company details', to: '/admin/company' }],
   },
   {
     type: 'group',
@@ -110,6 +111,7 @@ const NAV = [
       { label: 'Homepage Showcase', to: '/admin/marketing?tab=showcase', tab: 'showcase' },
       { label: 'WhatsApp Status', to: '/admin/marketing?tab=status', tab: 'status' },
       { label: 'Reviews', to: '/admin/reviews', badgeKey: 'pendingReviews' },
+      { label: 'Coupons', to: '/admin/coupons' },
     ],
   },
   { type: 'link', id: 'reports', label: 'Reports', to: '/admin/reports', icon: 'reports' },
@@ -120,12 +122,15 @@ const PAGE_META = [
   { match: '/admin/store-billing', title: 'Store Billing', subtitle: 'Physical shop / walk-in sales' },
   { match: '/admin/billing', title: 'Online Billing', subtitle: 'Website order payments' },
   { match: '/admin/orders', title: 'Online Orders', subtitle: 'Fulfillment pipeline' },
+  { match: '/admin/grn', title: 'GRN', subtitle: 'Goods receipt / stock inward' },
   { match: '/admin/inventory', title: 'Items', subtitle: 'Catalogue, categories & collections' },
   { match: '/admin/customers', title: 'Customers', subtitle: 'Buyer directory' },
   { match: '/admin/marketing', title: 'Marketing', subtitle: 'Status rings & floating videos' },
   { match: '/admin/reviews', title: 'Reviews', subtitle: 'Manage storefront testimonials' },
   { match: '/admin/reports', title: 'Reports', subtitle: 'Sales intelligence' },
   { match: '/admin/integrations', title: 'Integrations', subtitle: 'Connected tools' },
+  { match: '/admin/coupons', title: 'Coupons', subtitle: 'Checkout discount codes' },
+  { match: '/admin/company', title: 'Company details', subtitle: 'Invoice & courier sticker information' },
   { match: '/admin', title: 'Dashboard', subtitle: 'Store overview', exact: true },
 ];
 

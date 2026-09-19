@@ -12,7 +12,7 @@ const LOGO_PATH = LOGO_CANDIDATES.find((p) => fs.existsSync(p)) || '';
 export const LOGO_CID = 'h2r-logo';
 
 export const STORE_EMAIL = process.env.STORE_EMAIL || 'h2rsports7@gmail.com';
-export const STORE_PHONE = process.env.STORE_PHONE || '+91 99949 78963';
+export const STORE_PHONE = process.env.STORE_PHONE || '+91 93618 13878';
 
 const PLACEHOLDER_EMAIL = /@phone\.h2rsports\.in$/i;
 
@@ -101,7 +101,7 @@ export function logoAttachment() {
   ];
 }
 
-export async function sendMail({ to, bcc, subject, html, text }) {
+export async function sendMail({ to, bcc, subject, html, text, extraAttachments = [] }) {
   const mailer = getTransporter();
   const { from } = smtpConfig();
   if (!mailer) {
@@ -117,7 +117,7 @@ export async function sendMail({ to, bcc, subject, html, text }) {
       subject,
       text,
       html,
-      attachments: logoAttachment(),
+      attachments: [...logoAttachment(), ...extraAttachments],
     });
     return { sent: true, to, bcc: bcc || null };
   } catch (err) {

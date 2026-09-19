@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 
@@ -19,7 +20,8 @@ export default function NotificationBell() {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
-  const wrapRef = useRef(null);
+  const [panelPos, setPanelPos] = useState({ top: 56, right: 16 });
+  const btnRef = useRef(null);
   const navigate = useNavigate();
 
   const load = async () => {
@@ -40,16 +42,28 @@ export default function NotificationBell() {
 
   useEffect(() => {
     if (!open) return undefined;
-    const onClickOutside = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    const place = () => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const width = Math.min(380, window.innerWidth - 16);
+      let right = window.innerWidth - r.right;
+      if (right + width > window.innerWidth - 8) {
+        right = 8;
+      }
+      setPanelPos({
+        top: Math.min(r.bottom + 8, window.innerHeight - 120),
+        right: Math.max(8, right),
+        width,
+      });
     };
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
   }, [open]);
-
-  const toggleOpen = () => {
-    setOpen((prev) => !prev);
-  };
 
   const markAllRead = async () => {
     if (unreadCount === 0) return;
@@ -77,24 +91,8 @@ export default function NotificationBell() {
     }
   };
 
-  return (
-    <div className="notif-bell" ref={wrapRef}>
-      <button
-        type="button"
-        className="notif-bell__btn"
-        aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
-        onClick={toggleOpen}
-      >
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <path d="M6 8a6 6 0 0 1 12 0c0 4 1.5 5.5 2 6.5H4c.5-1 2-2.5 2-6.5z" />
-          <path d="M9.5 17a2.5 2.5 0 0 0 5 0" />
-        </svg>
-        {unreadCount > 0 && (
-          <span className="notif-bell__dot">{unreadCount > 9 ? '9+' : unreadCount}</span>
-        )}
-      </button>
-
-      {open && (
+  const panel = open
+    ? createPortal(
         <>
           <button
             type="button"
@@ -103,7 +101,12 @@ export default function NotificationBell() {
             tabIndex={-1}
             onClick={() => setOpen(false)}
           />
-          <div className="notif-panel">
+          <div
+            className="notif-panel"
+            role="dialog"
+            aria-label="Notifications"
+            style={{ top: panelPos.top, right: panelPos.right, width: panelPos.width }}
+          >
             <div className="notif-panel__head">
               <strong>Notifications</strong>
               <button
@@ -137,8 +140,30 @@ export default function NotificationBell() {
               )}
             </div>
           </div>
-        </>
-      )}
+        </>,
+        document.body
+      )
+    : null;
+
+  return (
+    <div className="notif-bell">
+      <button
+        type="button"
+        ref={btnRef}
+        className="notif-bell__btn"
+        aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
+        aria-expanded={open}
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <path d="M6 8a6 6 0 0 1 12 0c0 4 1.5 5.5 2 6.5H4c.5-1 2-2.5 2-6.5z" />
+          <path d="M9.5 17a2.5 2.5 0 0 0 5 0" />
+        </svg>
+        {unreadCount > 0 && (
+          <span className="notif-bell__dot">{unreadCount > 9 ? '9+' : unreadCount}</span>
+        )}
+      </button>
+      {panel}
     </div>
   );
 }

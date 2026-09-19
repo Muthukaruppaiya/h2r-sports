@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { mediaUrl } from '../config/api';
 
 function normalizeTrackingUrl(url) {
   const value = String(url || '').trim();
@@ -16,6 +17,8 @@ export function getCourierDetails(order) {
     trackingId,
     trackingUrl: normalizeTrackingUrl(courier.trackingUrl),
     notes: String(courier.notes || '').trim(),
+    documentUrl: String(courier.documentUrl || '').trim(),
+    documentName: String(courier.documentName || '').trim(),
   };
 }
 
@@ -59,6 +62,11 @@ export default function CourierTracking({ order, compact = false }) {
         {details.trackingUrl ? (
           <a href={details.trackingUrl} target="_blank" rel="noreferrer">
             Track shipment →
+          </a>
+        ) : null}
+        {details.documentUrl ? (
+          <a href={mediaUrl(details.documentUrl)} target="_blank" rel="noreferrer">
+            Courier copy{details.documentName ? ` · ${details.documentName}` : ''} →
           </a>
         ) : null}
       </div>

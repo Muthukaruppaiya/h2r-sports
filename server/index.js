@@ -17,11 +17,14 @@ import MarketingSettings from './models/MarketingSettings.js';
 import AppSettings from './models/AppSettings.js';
 import Media from './models/Media.js';
 import StoreBill from './models/StoreBill.js';
+import Grn from './models/Grn.js';
+import Coupon from './models/Coupon.js';
 import PendingCheckout from './models/PendingCheckout.js';
 import { ensureCounterSeed, nextSequence } from './models/Counter.js';
 import { buildStatusUpdate, isValidStatus } from './utils/orderStatus.js';
 import { parseInstagramUrl } from './utils/instagram.js';
 import { buildLineItemsFromRequest, validateCheckoutPayload } from './utils/orderCheckout.js';
+import { applyCouponToSubtotal } from './utils/coupon.js';
 import { uniquifySizes, sizesNeedRewrite } from './utils/productSizes.js';
 import { fulfillPaidCheckout, publicOrder } from './utils/orderFulfill.js';
 import { decrementStock, restoreStock, billStockItems, parseStock } from './utils/stock.js';
@@ -195,7 +198,7 @@ function withImages(product) {
 function sanitizeProductInput(body, { isCreate = false } = {}) {
   const allowed = [
     'id', 'name', 'tagline', 'price', 'compareAt', 'collection', 'category', 'badge',
-    'weight', 'willow', 'madeIn', 'topSelling', 'mostLoved', 'inStock', 'sizes', 'weights',
+    'weight', 'willow', 'madeIn', 'topSelling', 'inStock', 'sizes', 'weights',
     'features', 'images', 'description',
   ];
   const out = {};
@@ -308,6 +311,7 @@ app.use((req, res, next) => {
   if (req.originalUrl === '/api/payments/razorpay/webhook') {
     return express.raw({ type: 'application/json' })(req, res, next);
   }
+  if (req.is('multipart/form-data')) return next();
   return express.json()(req, res, next);
 });
 
@@ -339,6 +343,23 @@ const videoUpload = multer({
   fileFilter: (_req, file, cb) => {
     if (isAllowedVideoFile(file)) return cb(null, true);
     cb(new Error('Only video files are allowed (mp4, webm, mov).'));
+  },
+});
+
+function isAllowedCourierDoc(file) {
+  const name = String(file?.originalname || '');
+  const type = String(file?.mimetype || '').toLowerCase();
+  if (type === 'application/pdf' || type.startsWith('image/')) return true;
+  if (/\.(pdf|jpe?g|png|webp)$/i.test(name)) return true;
+  return false;
+}
+
+const courierDocUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (isAllowedCourierDoc(file)) return cb(null, true);
+    cb(new Error('Upload a PDF or image (JPG, PNG, WEBP) as the courier copy.'));
   },
 });
 
@@ -440,6 +461,11 @@ async function makeOrderId() {
 async function makeStoreBillId() {
   const seq = await nextSequence('storeBill');
   return `SH-${String(seq).padStart(6, '0')}`;
+}
+
+async function makeGrnId() {
+  const seq = await nextSequence('grn');
+  return `GRN-${String(seq).padStart(6, '0')}`;
 }
 
 function toYmd(date) {
@@ -979,12 +1005,12 @@ app.get('/api/store-info', (_req, res) => {
     currency: 'INR',
     gstInclusive: true,
     freeShippingIndia: true,
-    supportPhone: '+91 99949 78963',
+    supportPhone: '+91 93618 13878',
     supportEmail: 'h2rsports7@gmail.com',
     address: 'Tamil Nadu, India',
     payments: ['UPI', 'Cards', 'NetBanking'],
-    whatsapp: '919994978963',
-    whatsappLink: 'https://wa.me/919994978963',
+    whatsapp: '919361813878',
+    whatsappLink: 'https://wa.me/919361813878',
     benefits: [
       'All India Free Shipping',
       'Free premium cover',
@@ -1090,11 +1116,10 @@ app.get('/api/collections/:slug', async (req, res) => {
 // ─── Products ─────────────────────────────────────────────────────────────────
 app.get('/api/products', async (req, res) => {
   try {
-    const { collection, category, q, topSelling, mostLoved } = req.query;
+    const { collection, category, q, topSelling } = req.query;
     const filter = {};
     if (collection)              filter.collection = collection;
     if (topSelling === 'true')   filter.topSelling = true;
-    if (mostLoved  === 'true')   filter.mostLoved  = true;
 
     const familyByLabel = {
       'hard tennis': 'hard-tennis',
@@ -1485,13 +1510,27 @@ app.put('/api/admin/settings/store-address', protect, admin, async (req, res) =>
     const b = req.body || {};
     const storeAddress = {
       name: String(b.name || '').trim() || 'H2R Sports',
+      legalName: String(b.legalName || '').trim(),
+      tagline: String(b.tagline || '').trim(),
       phone: String(b.phone || '').trim(),
+      email: String(b.email || '').trim(),
+      whatsapp: String(b.whatsapp || '').trim(),
+      website: String(b.website || '').trim(),
       line1: String(b.line1 || '').trim(),
       line2: String(b.line2 || '').trim(),
       city: String(b.city || '').trim(),
       state: String(b.state || '').trim(),
       pincode: String(b.pincode || '').trim(),
-      gstin: String(b.gstin || '').trim(),
+      gstin: String(b.gstin || '').trim().toUpperCase(),
+      pan: String(b.pan || '').trim().toUpperCase(),
+      invoiceNote: String(b.invoiceNote || '').trim(),
+      invoiceTerms: (Array.isArray(b.invoiceTerms) ? b.invoiceTerms : [])
+        .map((term) => String(term || '').trim())
+        .slice(0, 3),
+      bankName: String(b.bankName || '').trim(),
+      accountName: String(b.accountName || '').trim(),
+      accountNumber: String(b.accountNumber || '').trim(),
+      ifsc: String(b.ifsc || '').trim().toUpperCase(),
     };
     const settings = await AppSettings.findOneAndUpdate(
       { key: 'default' },
@@ -1514,9 +1553,21 @@ app.post('/api/payments/razorpay/create', async (req, res) => {
       });
     }
 
-    const { customer, shipping, items } = req.body || {};
+    const { customer, shipping, items, couponCode } = req.body || {};
     const validated = validateCheckoutPayload({ customer, shipping });
-    const { lineItems, subtotal, shippingFee, total } = await buildLineItemsFromRequest(items);
+    const { lineItems, subtotal, shippingFee } = await buildLineItemsFromRequest(items);
+    let couponDiscount = 0;
+    let appliedCode = '';
+    if (couponCode) {
+      const applied = await applyCouponToSubtotal(couponCode, subtotal);
+      couponDiscount = applied.discount;
+      appliedCode = applied.couponCode;
+    }
+    let total = Math.max(0, subtotal + shippingFee - couponDiscount);
+    if (total < 1 && couponDiscount > 0) {
+      couponDiscount = Math.max(0, subtotal + shippingFee - 1);
+      total = 1;
+    }
 
     const amountPaise = rupeesToPaise(total);
     if (!Number.isFinite(amountPaise) || amountPaise < 100) {
@@ -1548,6 +1599,8 @@ app.post('/api/payments/razorpay/create', async (req, res) => {
         items: lineItems,
         subtotal,
         shippingFee,
+        discount: couponDiscount,
+        couponCode: appliedCode,
         total,
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       },
@@ -1561,6 +1614,9 @@ app.post('/api/payments/razorpay/create', async (req, res) => {
       currency: 'INR',
       orderId,
       razorpayOrderId: rzpOrder.id,
+      couponCode: appliedCode,
+      discount: couponDiscount,
+      total,
     });
   } catch (err) {
     const rzpStatus = Number(err.statusCode || err.status) || 0;
@@ -1723,15 +1779,51 @@ app.get('/api/admin/orders', protect, admin, async (req, res) => {
   }
 });
 
-app.put('/api/admin/orders/:id/status', protect, admin, async (req, res) => {
+app.put('/api/admin/orders/:id/status', protect, admin, (req, res, next) => {
+  courierDocUpload.single('document')(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ error: uploadErrorMessage(err, 'Document upload failed', 8 * 1024 * 1024) });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
-    const { status, note, courier } = req.body;
+    let { status, note, courier } = req.body;
+    if (typeof courier === 'string') {
+      try {
+        courier = JSON.parse(courier);
+      } catch {
+        courier = {};
+      }
+    }
     if (!isValidStatus(status)) {
       return res.status(400).json({ error: 'Invalid order status' });
     }
 
     const currentOrder = await Order.findOne({ orderId: req.params.id });
     if (!currentOrder) return res.status(404).json({ error: 'Order not found' });
+
+    let mailAttachments = [];
+    if (req.file) {
+      const stored = await storeBufferInGridFS(req.file.buffer, {
+        filename: req.file.originalname || 'courier-copy.pdf',
+        contentType: req.file.mimetype || 'application/octet-stream',
+      });
+      courier = {
+        ...(courier || {}),
+        documentId: stored.id,
+        documentUrl: stored.url,
+        documentName: req.file.originalname || 'Courier copy',
+        documentMime: req.file.mimetype || '',
+      };
+      mailAttachments = [
+        {
+          filename: req.file.originalname || 'courier-copy.pdf',
+          content: req.file.buffer,
+          contentType: req.file.mimetype || 'application/octet-stream',
+        },
+      ];
+    }
 
     const result = buildStatusUpdate(
       currentOrder.toObject(),
@@ -1766,7 +1858,7 @@ app.put('/api/admin/orders/:id/status', protect, admin, async (req, res) => {
       cancelled: 'cancelled',
     }[currentOrder.status];
     if (mailEvent) {
-      sendOrderEmail(currentOrder, mailEvent).catch(() => {});
+      sendOrderEmail(currentOrder, mailEvent, mailAttachments).catch(() => {});
     }
 
     res.json({ ok: true, order: currentOrder.toObject() });
@@ -2008,12 +2100,18 @@ app.put('/api/admin/marketing', protect, admin, async (req, res) => {
 app.get('/api/admin/reports/overview', protect, admin, async (req, res) => {
   try {
     const requestedDays = Number(req.query.days) || 30;
-    const days = Math.min(Math.max(requestedDays, 7), 180);
-    const end = new Date();
+    let days = Math.min(Math.max(requestedDays, 7), 365);
+    let end = req.query.to ? new Date(req.query.to) : new Date();
     end.setHours(23, 59, 59, 999);
-    const start = new Date(end);
-    start.setDate(start.getDate() - (days - 1));
+    let start = req.query.from ? new Date(req.query.from) : new Date(end);
+    if (!req.query.from) {
+      start.setDate(end.getDate() - (days - 1));
+    }
     start.setHours(0, 0, 0, 0);
+    if (req.query.from && req.query.to) {
+      days = Math.max(1, Math.ceil((end - start) / 86400000) + 1);
+      days = Math.min(days, 365);
+    }
 
     const orders = await Order.find({
       createdAt: { $gte: start, $lte: end },
@@ -2145,6 +2243,230 @@ app.get('/api/admin/reports/overview', protect, admin, async (req, res) => {
       topCustomers,
       drillOrders,
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+async function costMapFromGrn() {
+  const grns = await Grn.find().sort({ receivedAt: 1, createdAt: 1 }).lean();
+  const last = new Map();
+  const qty = new Map();
+  const value = new Map();
+  for (const grn of grns) {
+    for (const line of grn.items || []) {
+      const key = `${line.productId}||${line.sizeId || ''}`;
+      last.set(key, Number(line.purchasePrice) || 0);
+      qty.set(key, (qty.get(key) || 0) + (Number(line.qty) || 0));
+      value.set(key, (value.get(key) || 0) + (Number(line.lineTotal) || 0));
+    }
+  }
+  const avg = new Map();
+  for (const [key, q] of qty.entries()) {
+    avg.set(key, q ? value.get(key) / q : 0);
+  }
+  return { last, avg };
+}
+
+app.get('/api/admin/reports/stock', protect, admin, async (_req, res) => {
+  try {
+    const products = (await Product.find().lean()).map(withImages);
+    const { last, avg } = await costMapFromGrn();
+    const rows = [];
+    for (const product of products) {
+      const sizes = product.sizes?.length ? product.sizes : [{ id: '', label: 'Default', stock: 0, lastPurchasePrice: 0, price: product.price }];
+      for (const size of sizes) {
+        const key = `${product.id}||${size.id || ''}`;
+        const stock = parseStock(size.stock, 0);
+        const purchasePrice = Number(size.lastPurchasePrice) || last.get(key) || 0;
+        const avgCost = avg.get(key) || purchasePrice;
+        rows.push({
+          productId: product.id,
+          name: product.name,
+          collection: product.collection || '',
+          category: product.category || '',
+          sizeId: size.id || '',
+          sizeLabel: size.label || '—',
+          sellingPrice: Number(size.price ?? product.price) || 0,
+          stock,
+          purchasePrice,
+          avgCost,
+          stockValue: stock * purchasePrice,
+        });
+      }
+    }
+    const totalStock = rows.reduce((n, r) => n + r.stock, 0);
+    const totalValue = rows.reduce((n, r) => n + r.stockValue, 0);
+    res.json({ rows, kpis: { skus: rows.length, totalStock, totalValue } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/reports/grn', protect, admin, async (req, res) => {
+  try {
+    const from = req.query.from ? new Date(req.query.from) : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const to = req.query.to ? new Date(req.query.to) : new Date();
+    from.setHours(0, 0, 0, 0);
+    to.setHours(23, 59, 59, 999);
+    const grns = await Grn.find({
+      receivedAt: { $gte: from, $lte: to },
+    })
+      .sort({ receivedAt: -1, createdAt: -1 })
+      .lean();
+
+    const documents = grns.map((g) => ({
+      grnId: g.grnId,
+      invoiceNumber: g.invoiceNumber || '',
+      invoiceDate: g.invoiceDate || null,
+      supplierName: g.supplierName || '',
+      supplierPhone: g.supplierPhone || '',
+      notes: g.notes || '',
+      receivedAt: g.receivedAt || g.createdAt,
+      date: toYmd(new Date(g.receivedAt || g.createdAt)),
+      itemCount: (g.items || []).length,
+      totalQty: g.totalQty || 0,
+      totalValue: g.totalValue || 0,
+    }));
+
+    const rows = [];
+    for (const g of grns) {
+      for (const line of g.items || []) {
+        rows.push({
+          grnId: g.grnId,
+          date: toYmd(new Date(g.receivedAt || g.createdAt)),
+          receivedAt: g.receivedAt || g.createdAt,
+          invoiceNumber: g.invoiceNumber || '',
+          supplierName: g.supplierName || '',
+          productId: line.productId,
+          itemName: line.itemName || '',
+          sizeLabel: line.sizeLabel || '',
+          qty: Number(line.qty) || 0,
+          purchasePrice: Number(line.purchasePrice) || 0,
+          lineTotal: Number(line.lineTotal) || 0,
+        });
+      }
+    }
+
+    const suppliers = new Set(documents.map((d) => d.supplierName).filter(Boolean)).size;
+    res.json({
+      range: { from, to },
+      kpis: {
+        grnCount: documents.length,
+        totalQty: documents.reduce((n, d) => n + d.totalQty, 0),
+        totalValue: documents.reduce((n, d) => n + d.totalValue, 0),
+        suppliers,
+      },
+      documents,
+      rows,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/reports/margin', protect, admin, async (req, res) => {
+  try {
+    const from = req.query.from ? new Date(req.query.from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const to = req.query.to ? new Date(req.query.to) : new Date();
+    from.setHours(0, 0, 0, 0);
+    to.setHours(23, 59, 59, 999);
+    const productFilter = String(req.query.productId || '').trim();
+
+    const { last } = await costMapFromGrn();
+    const products = await Product.find().lean();
+    const sizeCost = new Map();
+    for (const product of products) {
+      for (const size of product.sizes || []) {
+        const key = `${product.id}||${size.id || ''}`;
+        sizeCost.set(key, Number(size.lastPurchasePrice) || last.get(key) || 0);
+      }
+    }
+
+    const orders = await Order.find({
+      paymentStatus: 'paid',
+      createdAt: { $gte: from, $lte: to },
+    }).lean();
+    const bills = await StoreBill.find({
+      soldAt: { $gte: from, $lte: to },
+    }).lean();
+
+    const map = new Map();
+    function addSale({ productId, name, sizeId, sizeLabel, qty, revenue }) {
+      if (productFilter && productId !== productFilter) return;
+      const key = `${productId || name}||${sizeId || ''}`;
+      const costEach = sizeCost.get(`${productId}||${sizeId || ''}`) || last.get(`${productId}||${sizeId || ''}`) || 0;
+      const units = Math.max(0, Number(qty) || 0);
+      const sale = Number(revenue) || 0;
+      const cogs = units * costEach;
+      const row = map.get(key) || {
+        productId: productId || '',
+        name: name || 'Item',
+        sizeLabel: sizeLabel || '—',
+        qty: 0,
+        revenue: 0,
+        cogs: 0,
+        purchasePrice: costEach,
+        sellingAvg: 0,
+      };
+      row.qty += units;
+      row.revenue += sale;
+      row.cogs += cogs;
+      row.purchasePrice = costEach;
+      map.set(key, row);
+    }
+
+    for (const order of orders) {
+      for (const item of order.items || []) {
+        addSale({
+          productId: item.id,
+          name: item.name,
+          sizeId: item.sizeId,
+          sizeLabel: item.sizeLabel,
+          qty: item.qty,
+          revenue: item.lineTotal ?? item.price * item.qty,
+        });
+      }
+    }
+    for (const bill of bills) {
+      const lines = Array.isArray(bill.items) && bill.items.length ? bill.items : [bill];
+      for (const line of lines) {
+        addSale({
+          productId: line.productId || line.id,
+          name: line.itemName || line.name,
+          sizeId: line.sizeId,
+          sizeLabel: line.sizeLabel,
+          qty: line.qty,
+          revenue: line.lineTotal ?? (line.unitPrice || 0) * (line.qty || 1),
+        });
+      }
+    }
+
+    const rows = Array.from(map.values())
+      .map((row) => {
+        const profit = row.revenue - row.cogs;
+        return {
+          ...row,
+          sellingAvg: row.qty ? row.revenue / row.qty : 0,
+          profit,
+          marginPct: row.revenue ? Math.round((profit / row.revenue) * 1000) / 10 : 0,
+        };
+      })
+      .sort((a, b) => b.profit - a.profit);
+
+    const kpis = rows.reduce(
+      (acc, row) => {
+        acc.qty += row.qty;
+        acc.revenue += row.revenue;
+        acc.cogs += row.cogs;
+        acc.profit += row.profit;
+        return acc;
+      },
+      { qty: 0, revenue: 0, cogs: 0, profit: 0 }
+    );
+    kpis.marginPct = kpis.revenue ? Math.round((kpis.profit / kpis.revenue) * 1000) / 10 : 0;
+
+    res.json({ range: { from, to }, rows, kpis });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2314,25 +2636,63 @@ app.delete('/api/admin/products/:id', protect, admin, async (req, res) => {
 
 app.get('/api/admin/customers', protect, admin, async (req, res) => {
   try {
-    const orders = await Order.find({ paymentStatus: 'paid' }).lean();
+    const orders = await Order.find({ paymentStatus: 'paid' }).sort({ createdAt: -1 }).lean();
+    const emails = [...new Set(orders.map((order) => order.customer?.email).filter(Boolean))];
+    const users = await User.find({ email: { $in: emails } })
+      .select('email name phone addresses createdAt emailVerified')
+      .lean();
+    const userByEmail = Object.fromEntries(users.map((user) => [String(user.email).toLowerCase(), user]));
     const customersMap = {};
-    
-    orders.forEach(order => {
-      const email = order.customer.email;
+
+    orders.forEach((order) => {
+      const email = String(order.customer?.email || '').toLowerCase();
+      if (!email) return;
+      const items = Array.isArray(order.items) ? order.items : [];
+      const qty = items.reduce((n, item) => n + (Number(item.qty) || 0), 0);
       if (!customersMap[email]) {
+        const user = userByEmail[email];
+        const saved = user?.addresses?.find((a) => a.isDefault) || user?.addresses?.[0] || {};
+        const ship = order.shipping || {};
         customersMap[email] = {
-          name: order.customer.name,
-          email: email,
-          phone: order.customer.phone,
+          name: user?.name || order.customer.name,
+          email,
+          phone: user?.phone || order.customer.phone,
+          addressLine1: saved.addressLine1 || ship.addressLine1 || '',
+          addressLine2: saved.addressLine2 || ship.addressLine2 || '',
+          city: saved.city || ship.city || '',
+          state: saved.state || ship.state || '',
+          pincode: saved.pincode || ship.pincode || '',
           totalOrders: 0,
           totalSpent: 0,
-          lastOrderDate: order.createdAt
+          totalQty: 0,
+          products: [],
+          firstOrderDate: order.createdAt,
+          lastOrderDate: order.createdAt,
+          lastOrderId: order.orderId,
+          lastPaymentMethod: order.paymentMethod || '',
+          lastOrderStatus: order.status || '',
+          lastPaymentStatus: order.paymentStatus || '',
+          joinedAt: user?.createdAt || order.createdAt,
+          emailVerified: Boolean(user?.emailVerified),
         };
       }
-      customersMap[email].totalOrders += 1;
-      customersMap[email].totalSpent += order.total;
-      if (new Date(order.createdAt) > new Date(customersMap[email].lastOrderDate)) {
-        customersMap[email].lastOrderDate = order.createdAt;
+      const row = customersMap[email];
+      row.totalOrders += 1;
+      row.totalSpent += Number(order.total) || 0;
+      row.totalQty += qty;
+      items.forEach((item) => {
+        const name = String(item.name || '').trim();
+        if (name && !row.products.includes(name)) row.products.push(name);
+      });
+      if (new Date(order.createdAt) > new Date(row.lastOrderDate)) {
+        row.lastOrderDate = order.createdAt;
+        row.lastOrderId = order.orderId;
+        row.lastPaymentMethod = order.paymentMethod || row.lastPaymentMethod;
+        row.lastOrderStatus = order.status || row.lastOrderStatus;
+        row.lastPaymentStatus = order.paymentStatus || row.lastPaymentStatus;
+      }
+      if (new Date(order.createdAt) < new Date(row.firstOrderDate)) {
+        row.firstOrderDate = order.createdAt;
       }
     });
 
@@ -2340,6 +2700,170 @@ app.get('/api/admin/customers', protect, admin, async (req, res) => {
     res.json({ customers });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+function sanitizeGrnLine(body = {}) {
+  const productId = String(body.productId || body.id || '').trim();
+  const qty = Math.max(1, parseStock(body.qty, 1) || 1);
+  const purchasePrice = Math.max(0, Number(body.purchasePrice) || 0);
+  if (!productId) return null;
+  return {
+    productId,
+    itemName: String(body.itemName || body.name || '').trim(),
+    sizeId: String(body.sizeId || '').trim(),
+    sizeLabel: String(body.sizeLabel || '').trim(),
+    qty,
+    purchasePrice,
+    lineTotal: qty * purchasePrice,
+  };
+}
+
+app.post('/api/coupons/validate', async (req, res) => {
+  try {
+    const subtotal = Number(req.body?.subtotal) || 0;
+    const applied = await applyCouponToSubtotal(req.body?.code, subtotal);
+    res.json({
+      ok: true,
+      code: applied.couponCode,
+      discount: applied.discount,
+      type: applied.coupon.type,
+      value: applied.coupon.value,
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/coupons', protect, admin, async (_req, res) => {
+  try {
+    const coupons = await Coupon.find().sort({ createdAt: -1 }).lean();
+    res.json({ coupons });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/coupons', protect, admin, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const code = String(b.code || '')
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, '');
+    if (!code) return res.status(400).json({ error: 'Coupon code is required' });
+    const type = b.type === 'fixed' ? 'fixed' : 'percent';
+    const value = Math.max(0, Number(b.value) || 0);
+    if (!value) return res.status(400).json({ error: 'Enter discount value' });
+    if (type === 'percent' && value > 100) {
+      return res.status(400).json({ error: 'Percent cannot exceed 100' });
+    }
+    const coupon = await Coupon.create({
+      code,
+      type,
+      value,
+      minOrder: Math.max(0, Number(b.minOrder) || 0),
+      maxDiscount: Math.max(0, Number(b.maxDiscount) || 0),
+      usageLimit: Math.max(0, Number(b.usageLimit) || 0),
+      expiresAt: b.expiresAt ? new Date(b.expiresAt) : null,
+      note: String(b.note || '').trim(),
+      active: b.active !== false,
+    });
+    res.status(201).json({ ok: true, coupon });
+  } catch (err) {
+    if (err.code === 11000) return res.status(400).json({ error: 'This coupon code already exists' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/admin/coupons/:id', protect, admin, async (req, res) => {
+  try {
+    const coupon = await Coupon.findByIdAndUpdate(
+      req.params.id,
+      { $set: { active: Boolean(req.body?.active) } },
+      { new: true }
+    );
+    if (!coupon) return res.status(404).json({ error: 'Coupon not found' });
+    res.json({ ok: true, coupon });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/coupons/:id', protect, admin, async (req, res) => {
+  try {
+    await Coupon.findByIdAndDelete(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/grn', protect, admin, async (_req, res) => {
+  try {
+    const grns = await Grn.find().sort({ receivedAt: -1, createdAt: -1 }).lean();
+    res.json({ grns, count: grns.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/grn/:grnId', protect, admin, async (req, res) => {
+  try {
+    const grn = await Grn.findOne({ grnId: String(req.params.grnId || '').trim() }).lean();
+    if (!grn) return res.status(404).json({ error: 'GRN not found' });
+    res.json({ grn });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/grn', protect, admin, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const items = (Array.isArray(b.items) ? b.items : []).map(sanitizeGrnLine).filter(Boolean);
+    if (!items.length) {
+      return res.status(400).json({ error: 'Add at least one product with quantity' });
+    }
+    const receivedAt = b.receivedAt ? new Date(b.receivedAt) : new Date();
+    const invoiceDate = b.invoiceDate ? new Date(b.invoiceDate) : null;
+    const payload = {
+      grnId: await makeGrnId(),
+      invoiceNumber: String(b.invoiceNumber || '').trim(),
+      invoiceDate: invoiceDate && !Number.isNaN(invoiceDate.getTime()) ? invoiceDate : null,
+      supplierName: String(b.supplierName || '').trim(),
+      supplierPhone: String(b.supplierPhone || '').trim(),
+      notes: String(b.notes || '').trim(),
+      receivedAt: Number.isNaN(receivedAt.getTime()) ? new Date() : receivedAt,
+      items,
+      totalQty: items.reduce((n, line) => n + line.qty, 0),
+      totalValue: items.reduce((n, line) => n + line.lineTotal, 0),
+      stockInwarded: true,
+    };
+    const stockRows = items.map((line) => ({
+      id: line.productId,
+      sizeId: line.sizeId,
+      sizeLabel: line.sizeLabel,
+      name: line.itemName,
+      qty: line.qty,
+    }));
+    await restoreStock(stockRows);
+    for (const line of items) {
+      if (!line.sizeId) continue;
+      await Product.updateOne(
+        { id: line.productId, 'sizes.id': line.sizeId },
+        { $set: { 'sizes.$.lastPurchasePrice': line.purchasePrice } }
+      );
+    }
+    try {
+      const grn = await Grn.create(payload);
+      res.status(201).json({ ok: true, grn });
+    } catch (err) {
+      await decrementStock(stockRows);
+      throw err;
+    }
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 
@@ -2497,18 +3021,64 @@ app.delete('/api/admin/store-bills/:id', protect, admin, async (req, res) => {
 
 app.put('/api/admin/customers/:email', protect, admin, async (req, res) => {
   try {
-    const { name, phone } = req.body;
-    const email = req.params.email;
-    
-    // Update the User if exists
-    await User.findOneAndUpdate({ email: email }, { name, phone });
-    
-    // Update orders to reflect the new customer details
+    const name = String(req.body?.name || '').trim();
+    const phone = String(req.body?.phone || '').trim();
+    const addressLine1 = String(req.body?.addressLine1 || '').trim();
+    const addressLine2 = String(req.body?.addressLine2 || '').trim();
+    const city = String(req.body?.city || '').trim();
+    const state = String(req.body?.state || '').trim();
+    const pincode = String(req.body?.pincode || '').trim();
+    const email = String(req.params.email || '').toLowerCase();
+    if (!name || !phone) {
+      return res.status(400).json({ error: 'Name and phone are required' });
+    }
+
+    const user = await User.findOne({ email });
+    if (user) {
+      user.name = name;
+      user.phone = phone;
+      const nextAddress = {
+        label: 'Home',
+        name,
+        phone,
+        addressLine1: addressLine1 || '—',
+        addressLine2,
+        city: city || '—',
+        state: state || '—',
+        pincode: pincode || '000000',
+        isDefault: true,
+      };
+      const idx = user.addresses.findIndex((a) => a.isDefault);
+      if (idx >= 0) {
+        Object.assign(user.addresses[idx], nextAddress);
+      } else if (user.addresses.length) {
+        Object.assign(user.addresses[0], nextAddress);
+        user.addresses[0].isDefault = true;
+      } else {
+        user.addresses.push(nextAddress);
+      }
+      await user.save();
+    }
+
     await Order.updateMany(
       { 'customer.email': email },
       { $set: { 'customer.name': name, 'customer.phone': phone } }
     );
-    
+
+    await Order.findOneAndUpdate(
+      { 'customer.email': email },
+      {
+        $set: {
+          'shipping.addressLine1': addressLine1 || '—',
+          'shipping.addressLine2': addressLine2,
+          'shipping.city': city || '—',
+          'shipping.state': state || '—',
+          'shipping.pincode': pincode || '000000',
+        },
+      },
+      { sort: { createdAt: -1 } }
+    );
+
     res.json({ ok: true, message: 'Customer updated' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2524,7 +3094,15 @@ if (fs.existsSync(LEGACY_MARKETING_DIR)) {
 }
 
 if (fs.existsSync(CLIENT_DIST)) {
-  app.use(express.static(CLIENT_DIST));
+  app.use(
+    express.static(CLIENT_DIST, {
+      setHeaders(res, filePath) {
+        if (filePath.endsWith('index.html')) {
+          res.setHeader('Cache-Control', 'no-store');
+        }
+      },
+    })
+  );
   app.get('*', (req, res, next) => {
     if (
       req.path.startsWith('/api') ||
@@ -2534,6 +3112,7 @@ if (fs.existsSync(CLIENT_DIST)) {
     ) {
       return next();
     }
+    res.setHeader('Cache-Control', 'no-store');
     res.sendFile(path.join(CLIENT_DIST, 'index.html'));
   });
 }
@@ -2554,6 +3133,7 @@ async function start() {
     // already exist (legacy orders keep their old-format IDs; only new ones become sequential).
     await ensureCounterSeed('order', await Order.countDocuments());
     await ensureCounterSeed('storeBill', await StoreBill.countDocuments());
+    await ensureCounterSeed('grn', await Grn.countDocuments());
     await ensureLivePaymentMode();
     if (isMailConfigured()) {
       console.log('✓ Order email: SMTP configured');
