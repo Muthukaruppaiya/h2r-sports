@@ -162,11 +162,11 @@ export default function Navbar() {
   }, [searchOpen]);
 
   useEffect(() => {
-    document.body.style.overflow = menuOpen ? 'hidden' : '';
+    document.body.style.overflow = menuOpen || searchOpen ? 'hidden' : '';
     return () => {
       document.body.style.overflow = '';
     };
-  }, [menuOpen]);
+  }, [menuOpen, searchOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -207,6 +207,10 @@ export default function Navbar() {
   };
 
   const hasResults = useMemo(() => results.length > 0, [results]);
+  const collectionLabel = useMemo(
+    () => navCollections.map((c) => c.label).filter(Boolean).join(' · ') || 'Our collections',
+    [navCollections]
+  );
 
   const drawer = (
     <>
@@ -341,53 +345,83 @@ export default function Navbar() {
 
       {menuOpen ? createPortal(drawer, document.body) : null}
 
-      {searchOpen && (
-        <div className="navbar-search">
-          <form className="navbar-search__form container" onSubmit={submitSearch}>
-            <input
-              ref={inputRef}
-              type="search"
-              placeholder="Search bats… Thala, Rhino, English"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              aria-label="Search products"
-            />
-            <button type="submit" className="btn btn--sm btn--primary">
-              Search
-            </button>
-            <button type="button" className="navbar-search__close" onClick={closeSearch}>
-              ✕
-            </button>
-          </form>
-          {query.trim() && (
-            <div className="navbar-search__results container">
-              {hasResults ? (
-                <ul>
-                  {results.map((p) => (
-                    <li key={p.id}>
-                      <Link
-                        to={`/shop/${p.id}`}
-                        onClick={() => {
-                          closeSearch();
-                          close();
-                        }}
-                      >
-                        <img src={p.image} alt="" width="40" height="40" />
-                        <span>
-                          {p.name}
-                          <small>{formatPriceHint(p.price)}</small>
-                        </span>
-                      </Link>
-                    </li>
+      {searchOpen
+        ? createPortal(
+            <div className="ns-overlay" role="dialog" aria-label="Search bats">
+              <button type="button" className="ns-overlay__scrim" aria-label="Close search" onClick={closeSearch} />
+              <div className="ns-overlay__sheet">
+                <form className="ns-overlay__form" onSubmit={submitSearch}>
+                  <div className="ns-overlay__input">
+                    <span className="ns-overlay__lens" aria-hidden="true">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                        <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+                        <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                    </span>
+                    <input
+                      ref={inputRef}
+                      type="search"
+                      placeholder={collectionLabel}
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      aria-label={collectionLabel}
+                    />
+                    <button type="submit" className="ns-overlay__submit">
+                      Go
+                    </button>
+                  </div>
+                  <button type="button" className="ns-overlay__x" onClick={closeSearch} aria-label="Close">
+                    Close
+                  </button>
+                </form>
+                <p className="ns-overlay__hint">Collections</p>
+                <div className="ns-overlay__chips">
+                  {navCollections.map((c) => (
+                    <Link
+                      key={c.to}
+                      to={c.to}
+                      className="ns-overlay__chip"
+                      onClick={() => {
+                        closeSearch();
+                        close();
+                      }}
+                    >
+                      {c.label}
+                    </Link>
                   ))}
-                </ul>
-              ) : (
-                <p className="navbar-search__empty">No products match “{query.trim()}”</p>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+                </div>
+                {query.trim() ? (
+                  <div className="ns-overlay__results">
+                    {hasResults ? (
+                      <ul>
+                        {results.map((p) => (
+                          <li key={p.id}>
+                            <Link
+                              to={`/shop/${p.id}`}
+                              onClick={() => {
+                                closeSearch();
+                                close();
+                              }}
+                            >
+                              <img src={p.image} alt="" width="48" height="48" />
+                              <span>
+                                {p.name}
+                                <small>{formatPriceHint(p.price)}</small>
+                              </span>
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="ns-overlay__empty">No bats match “{query.trim()}”</p>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </header>
   );
 }

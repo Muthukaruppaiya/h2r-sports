@@ -3,6 +3,12 @@ import { formatINR } from '../utils/india';
 import { mediaUrl } from '../config/api.js';
 import { setBuyNowItem } from '../utils/checkoutItem';
 
+function storefrontBadge(value) {
+  const text = String(value || '').trim();
+  if (!text || /^\d+$/.test(text) || text.length <= 1) return '';
+  return text;
+}
+
 function productIsInStock(product) {
   if (product?.inStock === false) return false;
   const sizes = product?.sizes || [];
@@ -13,10 +19,10 @@ function productIsInStock(product) {
 export default function ProductCard({ product }) {
   const navigate = useNavigate();
   const inStock = productIsInStock(product);
+  const badge = storefrontBadge(product.badge);
   const defaultSize =
     product.sizes?.find((s) => Math.floor(Number(s.stock) || 0) > 0) || product.sizes?.[0];
   const primary = mediaUrl(product.image || product.images?.[0] || '/products/placeholders/front.svg');
-  const imageCount = product.images?.length || 0;
 
   const buyNow = () => {
     if (!inStock) return;
@@ -45,11 +51,8 @@ export default function ProductCard({ product }) {
   return (
     <article className={`product-card${inStock ? '' : ' product-card--sold'}`}>
       <Link to={`/shop/${product.id}`} className="product-card__media">
-        {product.badge && <span className="product-card__badge">{product.badge}</span>}
+        {badge ? <span className="product-card__badge">{badge}</span> : null}
         {!inStock && <span className="product-card__badge product-card__badge--sold">Sold out</span>}
-        {imageCount > 1 && (
-          <span className="product-card__pics">{Math.min(imageCount, 5)} photos</span>
-        )}
         <img
           src={primary}
           alt={product.name}
@@ -61,7 +64,6 @@ export default function ProductCard({ product }) {
         />
       </Link>
       <div className="product-card__body">
-        <p className="product-card__vendor">H2R Sports</p>
         <h3>
           <Link to={`/shop/${product.id}`}>{product.name}</Link>
         </h3>

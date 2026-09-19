@@ -149,7 +149,7 @@ export default function ProductDetail() {
           <ProductGallery
             images={product.images || []}
             alt={product.name}
-            badge={product.badge}
+            badge={String(product.badge || '').trim() && !/^\d+$/.test(String(product.badge).trim()) && String(product.badge).trim().length > 1 ? product.badge : ''}
           />
         </div>
 
@@ -179,9 +179,7 @@ export default function ProductDetail() {
               <span className="pdp__compare">{formatINR(product.compareAt)}</span>
             )}
           </div>
-          <p className="pdp__ship-note">
-            {INDIA.gstNote} · {INDIA.shippingNote}
-          </p>
+          <p className="pdp__ship-note">{INDIA.shippingNote}</p>
 
           <dl className="pdp__specs">
             <div>

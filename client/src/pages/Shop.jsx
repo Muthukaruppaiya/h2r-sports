@@ -19,11 +19,25 @@ export default function Shop() {
   const [category, setCategory] = useState('All');
   const [query, setQuery] = useState(() => searchParams.get('q') || '');
   const [sort, setSort] = useState('featured');
+  const [collections, setCollections] = useState([]);
 
   useEffect(() => {
     const q = searchParams.get('q') || '';
     setQuery(q);
   }, [searchParams]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getCollections()
+      .then((data) => {
+        if (!cancelled) setCollections(data.collections || []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,13 +76,20 @@ export default function Shop() {
     }
   }, [products, sort]);
 
+  const collectionLabel = useMemo(
+    () =>
+      collections
+        .map((c) => c.variant || c.name)
+        .filter(Boolean)
+        .join(' · ') || 'Our collections',
+    [collections]
+  );
+
   return (
     <main className="shop-page">
       <div className="shop-hero">
         <RevealOnScroll className="container" variant="fast">
-          <p className="home-banner__eyebrow">All products</p>
           <h1>Shop cricket bats</h1>
-          <p>Hard tennis · Soft tennis · Season bats — prices in Rs. (incl. GST)</p>
         </RevealOnScroll>
       </div>
 
@@ -78,9 +99,10 @@ export default function Shop() {
             <span>Search</span>
             <input
               type="search"
-              placeholder="Thala, Rhino, English…"
+              placeholder={collectionLabel}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              aria-label={collectionLabel}
             />
           </label>
 
